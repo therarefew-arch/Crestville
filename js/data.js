@@ -1,7 +1,7 @@
 // Game data: elements, roles, creatures, traits and regions.
 
 // Bump by one with every update (v0.0.02, v0.0.03, ...). Also add a line to CHANGELOG.md.
-const VERSION = 'v0.0.08';
+const VERSION = 'v0.0.09';
 
 const ELEMENTS = {
   leaf:  { name: 'Leaf',  color: '#a8cf8e', dark: '#5e8a4a', beats: ['water', 'stone'] },
@@ -135,3 +135,29 @@ const REGIONS = [
 const STARTERS = ['mossbun', 'puddlepup', 'emberkit'];
 
 const RIVAL_NAMES = ['Hazel', 'Juniper', 'Otis', 'Clementine', 'Basil', 'Poppy', 'Fennel', 'Marigold', 'Rufus', 'Willa', 'Pip', 'Tansy'];
+
+// ---------- Charms: loot with random bonus stats ----------
+const CHARM_RARITY = {
+  common:    { name: 'Common',    color: '#b9a88f', glow: '#efe2c9', affixes: 1, mult: 1,   salvage: 10 },
+  rare:      { name: 'Rare',      color: '#6f9fc0', glow: '#c8e7ee', affixes: 2, mult: 1.25, salvage: 25 },
+  epic:      { name: 'Epic',      color: '#a07cc4', glow: '#e3d6f3', affixes: 2, mult: 1.6, salvage: 60 },
+  legendary: { name: 'Legendary', color: '#e0a32e', glow: '#fbe7a1', affixes: 3, mult: 2.1, salvage: 150 },
+};
+// per: value grows with the charm's level. pct: a percent range that grows with rarity.
+const AFFIXES = {
+  atk:    { per: 0.14, text: (v) => `+${v} attack`, noun: 'Fang', kind: 'attack' },
+  hp:     { per: 0.35, text: (v) => `+${v} HP`, noun: 'Shell', kind: 'guard' },
+  atkPct: { pct: [5, 12], text: (v) => `+${v}% attack`, noun: 'Ember', kind: 'attack' },
+  hpPct:  { pct: [6, 14], text: (v) => `+${v}% HP`, noun: 'Bloom', kind: 'guard' },
+  opener: { per: 0.3, text: (v) => `First hit deals +${v} damage`, noun: 'Spark', kind: 'attack' },
+  lead:   { per: 0.12, text: (v) => `+${v} attack while first in line`, noun: 'Banner', kind: 'attack' },
+  thorny: { per: 0.08, text: (v) => `When hurt: deals ${v} damage back`, noun: 'Thorn', kind: 'guard' },
+  mend:   { per: 0.08, text: (v) => `After attacking: heals ${v} HP`, noun: 'Dewdrop', kind: 'guard' },
+  guard:  { per: 0.05, text: (v) => `Takes ${v} less damage from hits`, noun: 'Pebble', kind: 'guard' },
+  xp:     { pct: [8, 20], text: (v) => `+${v}% XP`, noun: 'Quill', kind: 'growth' },
+  coins:  { pct: [8, 20], text: (v) => `+${v}% coins (team)`, noun: 'Coin', kind: 'growth' },
+};
+const CHARM_ADJ = {
+  common: ['Little', 'Cozy', 'Plain', 'Pocket'], rare: ['Bright', 'Lucky', 'Polished', 'Humming'],
+  epic: ['Radiant', 'Ancient', 'Starlit', 'Whispering'], legendary: ['Mythic', 'Celestial', 'Eternal', 'Crowned'],
+};

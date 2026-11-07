@@ -19,7 +19,17 @@ function creatureStats(c) {
   if (traits.includes('hardy')) hp *= 1.15;
   if (traits.includes('giant')) { hp *= 1.3; atk *= 0.9; }
   if (traits.includes('glass')) { atk *= 1.3; hp *= 0.8; }
+  const ch = charmTotals(c);
+  atk = atk * (1 + ch.atkPct / 100) + ch.atk;
+  hp = hp * (1 + ch.hpPct / 100) + ch.hp;
   return { atk: Math.max(1, Math.round(atk)), hp: Math.max(1, Math.round(hp)) };
+}
+
+// Sum of every bonus stat on a creature's equipped charms.
+function charmTotals(c) {
+  const t = { atk: 0, hp: 0, atkPct: 0, hpPct: 0, opener: 0, lead: 0, thorny: 0, mend: 0, guard: 0, xp: 0, coins: 0 };
+  for (const ch of c.charms || []) for (const a of ch.affixes) t[a.k] += a.v;
+  return t;
 }
 
 // Skill power grows with evolution and every 30 levels.
@@ -148,7 +158,7 @@ async function runBattle(allyTeam, enemyTeam, ui = null, report = null) {
     return {
       key: side + n++, id: c.id, sp, lvl: c.lvl, t: tierOf(c.lvl), stage: evoStage(c.lvl), shiny: !!c.shiny,
       atk: st.atk + b, hp: st.hp + b, side, out: false, src: c,
-      skills: skillsOf(c), traits: c.traits || [], opened: false, blocked: false, stood: false,
+      skills: skillsOf(c), traits: c.traits || [], opened: false, blocked: false, stood: false, ch: charmTotals(c),
     };
   };
   const build = (team, side) => { const list = team.filter(Boolean); const bonus = elementBonus(list); return list.map((c) => make(c, side, bonus)); };
@@ -183,6 +193,7 @@ async function runBattle(allyTeam, enemyTeam, ui = null, report = null) {
         return;
       }
       if (knows(target, 'toughskin')) amount -= target.t;
+      amount -= target.ch.guard;
       if (has(target, 'thickfur')) amount -= 1;
       amount = Math.max(1, amount);
       const wasUp = target.hp > 0;
@@ -191,6 +202,10 @@ async function runBattle(allyTeam, enemyTeam, ui = null, report = null) {
       if (src && src.side !== target.side) dealt.set(src, (dealt.get(src) || 0) + amount);
       await call('damage', target, amount, tag);
       if (target.hp > 0) await fire(target, 'hurt', { src });
+      if (target.hp > 0 && target.ch.thorny && src && src.side !== target.side && tag !== 'thorn') {
+        await call('trigger', target, 'Thorn Charm');
+        await ctx.damage(target, src, target.ch.thorny, 'thorn');
+      }
     },
     async buff(u, atk, hp) {
       if (!u || u.out || u.hp <= 0) return;
@@ -228,7 +243,8 @@ async function runBattle(allyTeam, enemyTeam, ui = null, report = null) {
   function hitFor(src, target) {
     let n = src.atk, tag = '';
     if (ELEMENTS[src.sp.el].beats.includes(target.sp.el)) { n = Math.round(n * 1.3) + (n < 4 ? 1 : 0); tag = 'strong'; }
-    if (has(src, 'opener') && !src.opened) { src.opened = true; n += 4; }
+    if ((has(src, 'opener') || src.ch.opener) && !src.opened) { src.opened = true; n += (has(src, 'opener') ? 4 : 0) + src.ch.opener; }
+    if (src.ch.lead && B[src.side][0] === src) n += src.ch.lead;
     return [n, tag];
   }
 
@@ -255,6 +271,7 @@ async function runBattle(allyTeam, enemyTeam, ui = null, report = null) {
     for (const u of [a, e]) {
       if (u.hp <= 0) continue;
       await fire(u, 'attack');
+      if (u.ch.mend && u.hp > 0) { await call('trigger', u, 'Dewdrop Charm'); await ctx.buff(u, 0, u.ch.mend); }
       if (has(u, 'sapling') && u.hp > 0) await trait(u, 'sapling', () => ctx.buff(u, 0, 1));
     }
     await resolveFaints();

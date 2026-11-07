@@ -8,7 +8,7 @@ function freshState() {
   return {
     name: '', coins: 60, berries: 2, crests: 0,
     roster: [], team: [null, null, null, null, null], nextUid: 1,
-    eggCost: 100, trophies: 0, rivals: null, speed: 1, dust: 0, pity: 0, seen: [], visited: ['town'], lastTown: 'town', music: true, sfx: true, bike: false, riding: null, worldSeed: newSeed(),
+    eggCost: 100, trophies: 0, rivals: null, speed: 1, dust: 0, pity: 0, seen: [], visited: ['town'], lastTown: 'town', music: true, sfx: true, bike: false, riding: null, worldSeed: newSeed(), charms: [], nextCid: 1,
     map: 'town', x: MAPS.town.start[0], y: MAPS.town.start[1], dir: 'down', beaten: {},
   };
 }
@@ -32,6 +32,7 @@ function migrate(st) {
   st.roster = st.roster.filter((c) => SPECIES_BY_ID[c.id]);
   if (!st.visited.includes('town')) st.visited.unshift('town');
   if (!st.worldSeed) st.worldSeed = newSeed();
+  for (const c of st.roster) if (!c.charms) c.charms = [];
   st.team = st.team.map((u) => (st.roster.some((c) => c.uid === u) ? u : null));
   return st;
 }
@@ -157,7 +158,7 @@ function announceGrowth(c, oldLvl) {
 function addXp(c, xp) {
   if (c.lvl >= MAX_LEVEL) return 0;
   const old = c.lvl;
-  c.xp += Math.round(xp * (c.traits.includes('scholar') ? 1.3 : 1));
+  c.xp += Math.round(xp * xpMult(c));
   while (c.lvl < MAX_LEVEL && c.xp >= xpNeed(c.lvl)) { c.xp -= xpNeed(c.lvl); c.lvl++; }
   if (c.lvl >= MAX_LEVEL) c.xp = 0;
   afterLevelUp(c, old);
@@ -185,6 +186,7 @@ let celebrating = false;
 async function celebrate() {
   if (celebrating) return;
   celebrating = true;
+  while (lootQueue.length) await showLoot(lootQueue.shift());
   if (levelUps.size) await showLevelUps();
   while (evoQueue.length) {
     const e = evoQueue.shift();
@@ -339,7 +341,7 @@ function awardKills(report, mult = 1) {
   team.forEach((c, i) => {
     const xp = earned.get(c);
     const fromLvl = c.lvl, fromXp = c.xp;
-    const gain = c.lvl >= MAX_LEVEL ? 0 : Math.round(xp * (c.traits.includes('scholar') ? 1.3 : 1));
+    const gain = c.lvl >= MAX_LEVEL ? 0 : Math.round(xp * xpMult(c));
     if (xp) addXp(c, xp);
     const sp = SPECIES_BY_ID[c.id];
     rows.push(`<div class="xp-line ${c === mvp ? 'mvp' : ''}" data-from-lvl="${fromLvl}" data-from-xp="${fromXp}" data-to-lvl="${c.lvl}" data-to-xp="${c.xp}" data-delay="${200 + i * 140}">
@@ -387,13 +389,159 @@ function animateXp(root) {
 function giveCoins(n) { n = Math.round(n * coinBonus()); S.coins += n; save(); updateHud(); return n; }
 
 function giveCreature(c) {
-  c = { ...c, uid: S.nextUid++, xp: 0 };
+  c = { ...c, uid: S.nextUid++, xp: 0, charms: c.charms || [] };
   S.roster.push(c);
   const empty = S.team.indexOf(null);
   if (empty >= 0) S.team[empty] = c.uid;
   return c;
 }
-function coinBonus() { return teamEntries().some((c) => c && c.traits.includes('lucky')) ? 1.25 : 1; }
+function coinBonus() {
+  const team = teamEntries().filter(Boolean);
+  return (team.some((c) => c.traits.includes('lucky')) ? 1.25 : 1) + team.reduce((s, c) => s + charmTotals(c).coins, 0) / 100;
+}
+function xpMult(c) { return (c.traits.includes('scholar') ? 1.3 : 1) + charmTotals(c).xp / 100; }
+
+// ---------- charms ----------
+const lootQueue = [];
+function makeCharm(lvl, rarity) {
+  const R = CHARM_RARITY[rarity];
+  const keys = Object.keys(AFFIXES).sort(() => Math.random() - 0.5).slice(0, R.affixes);
+  const affixes = keys.map((k) => {
+    const A = AFFIXES[k];
+    const v = A.pct ? Math.round((A.pct[0] + Math.random() * (A.pct[1] - A.pct[0])) * R.mult)
+      : Math.max(1, Math.round(lvl * A.per * R.mult * (0.75 + Math.random() * 0.5))) + (k === 'hp' ? 2 : 0);
+    return { k, v };
+  });
+  return { cid: S.nextCid++, name: `${rand(CHARM_ADJ[rarity])} ${AFFIXES[affixes[0].k].noun} Charm`, rarity, lvl: Math.round(lvl), affixes };
+}
+const DROP_TABLES = {
+  wild: { common: 70, rare: 25, epic: 5 },
+  trainer: { common: 50, rare: 38, epic: 12 },
+  champion: { rare: 40, epic: 42, legendary: 18 },
+};
+function dropCharm(lvl, table) {
+  const w = DROP_TABLES[table];
+  const ch = makeCharm(lvl, weightedPick(Object.keys(w), (k) => w[k]));
+  S.charms.push(ch);
+  lootQueue.push(ch);
+  save();
+  return ch;
+}
+function charmSVG(ch, size = 48) {
+  const R = CHARM_RARITY[ch.rarity], kind = AFFIXES[ch.affixes[0].k].kind;
+  const glyph = kind === 'attack' ? '<path d="M24 22 L29 34 L24 31 L19 34 Z" fill="#fffaf0"/>'
+    : kind === 'guard' ? '<path d="M24 21 L30 23 V28 C30 32 27 34.5 24 36 C21 34.5 18 32 18 28 V23 Z" fill="#fffaf0"/>'
+      : '<path d="M24 21 C30 24 30 32 24 36 C18 32 18 24 24 21 Z M24 23 V35" fill="#fffaf0" stroke="#fffaf0"/>';
+  return `<svg viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true">
+    <path d="M24 4 C18 4 16 9 18 13 M24 4 C30 4 32 9 30 13" fill="none" stroke="#8a7461" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="24" cy="28" r="17" fill="${R.glow}" opacity=".6"/>
+    <path d="M24 12 L37 20 V36 L24 44 L11 36 V20 Z" fill="${R.color}" stroke="#5b4636" stroke-width="2.4" stroke-linejoin="round"/>
+    <path d="M24 12 L37 20 L24 26 L11 20 Z" fill="#ffffff" opacity=".28"/>${glyph}
+  </svg>`;
+}
+function affixList(ch, anim = false) {
+  return ch.affixes.map((a, i) => `<div class="affix" ${anim ? `style="animation-delay:${0.7 + i * 0.35}s"` : ''}>${AFFIXES[a.k].text(a.v)}</div>`).join('');
+}
+function ownerOf(ch) { return S.roster.find((c) => (c.charms || []).some((x) => x.cid === ch.cid)); }
+
+function showLoot(ch) {
+  const R = CHARM_RARITY[ch.rarity];
+  sfx(ch.rarity === 'legendary' ? 'fanfare' : 'levelup');
+  return new Promise((resolve) => {
+    const sheet = openModal(`<div class="loot r-${ch.rarity}" style="--rc:${R.color};--rg:${R.glow}">
+      ${ch.rarity === 'legendary' || ch.rarity === 'epic' ? confettiHTML(ch.rarity === 'legendary' ? 40 : 20) : ''}
+      <div class="loot-rays"></div>
+      <div class="loot-title">Loot!</div>
+      <div class="loot-gem">${charmSVG(ch, 110)}</div>
+      <div class="loot-rarity">${R.name}</div>
+      <h2 class="loot-name">${esc(ch.name)}</h2>
+      <div class="hint center">Charm level ${ch.lvl}</div>
+      <div class="loot-affixes">${affixList(ch, true)}</div>
+      <p class="hint center" style="margin-top:8px">Equip it from Team → Charms. Each creature can wear 2.</p>
+      <button class="btn primary block" data-close style="margin-top:10px">Nice!</button></div>`);
+    ch.affixes.forEach((a, i) => setTimeout(() => sfx('pop', 4 + i * 3), 700 + i * 350));
+    sheet.querySelector('[data-close]').onclick = () => { closeModal(); resolve(); };
+  });
+}
+
+// Choose who wears a charm (or which charm a creature wears).
+function equipCharm(c, ch, back) {
+  if (c.charms.length >= 2) {
+    const sheet = openModal(`<h2>${esc(nameOf(c))} already wears 2 charms</h2><p class="hint">Swap one out for ${esc(ch.name)}?</p>
+      <div class="choice-list">${c.charms.map((x) => `<button class="btn block choice" data-out="${x.cid}"><b>Take off ${esc(x.name)}</b><small>${x.affixes.map((a) => AFFIXES[a.k].text(a.v)).join(' · ')}</small></button>`).join('')}</div>
+      <button class="btn block" data-act="back" style="margin-top:10px">Back</button>`);
+    sheet.querySelector('[data-act=back]').onclick = back;
+    sheet.querySelectorAll('[data-out]').forEach((b) => (b.onclick = () => {
+      const out = c.charms.find((x) => x.cid === Number(b.dataset.out));
+      c.charms = c.charms.filter((x) => x !== out); S.charms.push(out);
+      equipCharm(c, ch, back);
+    }));
+    return;
+  }
+  S.charms = S.charms.filter((x) => x.cid !== ch.cid);
+  c.charms.push(ch);
+  save(); sfx('pop', 6);
+  toast(`${esc(nameOf(c))} is wearing ${esc(ch.name)}!`);
+  back();
+}
+function unequipCharm(c, ch) {
+  c.charms = c.charms.filter((x) => x.cid !== ch.cid);
+  S.charms.push(ch); save();
+}
+function pickCreatureFor(ch, back) {
+  const list = [...S.roster].sort((a, b) => (S.team.includes(b.uid) - S.team.includes(a.uid)) || b.lvl - a.lvl);
+  const sheet = openModal(`<h2>Who wears ${esc(ch.name)}?</h2><div class="grid" style="margin-top:8px">${list.map((c) => monCard(c)).join('')}</div>
+    <button class="btn block" data-act="back" style="margin-top:10px">Back</button>`);
+  sheet.querySelector('[data-act=back]').onclick = back;
+  sheet.querySelectorAll('.mon').forEach((el) => (el.onclick = () => equipCharm(byUid(Number(el.dataset.uid)), ch, () => { closeModal(); refreshPanel(); })));
+}
+function pickCharmFor(c) {
+  const bag = [...S.charms].sort((a, b) => Object.keys(CHARM_RARITY).indexOf(b.rarity) - Object.keys(CHARM_RARITY).indexOf(a.rarity) || b.lvl - a.lvl);
+  const sheet = openModal(`<h2>Equip a charm on ${esc(nameOf(c))}</h2>
+    ${bag.length ? `<div class="charm-list">${bag.map((ch) => charmRow(ch)).join('')}</div>` : '<p class="hint">Your bag is empty. Champions always drop charms, and trainers and rare wild creatures sometimes do.</p>'}
+    <button class="btn block" data-act="back" style="margin-top:10px">Back</button>`);
+  sheet.querySelector('[data-act=back]').onclick = () => showCreature(c.uid);
+  sheet.querySelectorAll('[data-cid]').forEach((el) => (el.onclick = () => equipCharm(c, S.charms.find((x) => x.cid === Number(el.dataset.cid)), () => showCreature(c.uid))));
+}
+function charmRow(ch, extra = '') {
+  const R = CHARM_RARITY[ch.rarity];
+  return `<div class="charm-row" data-cid="${ch.cid}" style="--rc:${R.color}">${charmSVG(ch, 44)}
+    <div class="cr-mid"><b style="color:${R.color}">${esc(ch.name)}</b><small>${R.name} · Lv ${ch.lvl}</small>${affixList(ch)}</div>${extra}</div>`;
+}
+let confirmSalvage = null;
+function renderCharms(body) {
+  const order = Object.keys(CHARM_RARITY);
+  const worn = S.roster.flatMap((c) => c.charms.map((ch) => ({ ch, c })));
+  const bag = [...S.charms].sort((a, b) => order.indexOf(b.rarity) - order.indexOf(a.rarity) || b.lvl - a.lvl);
+  body.innerHTML = `${teamTabs()}
+    <p class="hint">Each creature can wear 2 charms. Tap a charm in your bag to equip it, or salvage it for stardust.</p>
+    <h3>In your bag (${bag.length})</h3>
+    ${bag.length ? `<div class="charm-list">${bag.map((ch) => charmRow(ch, `<div class="cr-btns"><button class="btn small primary" data-equip="${ch.cid}">Equip</button><button class="btn small" data-salvage="${ch.cid}">${confirmSalvage === ch.cid ? 'Sure?' : `+${CHARM_RARITY[ch.rarity].salvage} dust`}</button></div>`)).join('')}</div>` : '<p class="hint">Empty for now. Champions always drop charms. Trainers and rare wild creatures sometimes do.</p>'}
+    <h3>Being worn (${worn.length})</h3>
+    ${worn.length ? `<div class="charm-list">${worn.map(({ ch, c }) => charmRow(ch, `<div class="cr-btns"><span class="hint">${esc(nameOf(c))}</span><button class="btn small" data-unequip="${ch.cid}">Take off</button></div>`)).join('')}</div>` : '<p class="hint">No one is wearing a charm yet.</p>'}`;
+  bindTeamTabs(body);
+  body.querySelectorAll('[data-equip]').forEach((b) => (b.onclick = (e) => { e.stopPropagation(); pickCreatureFor(S.charms.find((x) => x.cid === Number(b.dataset.equip)), closeModal); }));
+  body.querySelectorAll('[data-salvage]').forEach((b) => (b.onclick = (e) => {
+    e.stopPropagation();
+    const id = Number(b.dataset.salvage);
+    if (confirmSalvage !== id) { confirmSalvage = id; refreshPanel(); return; }
+    const ch = S.charms.find((x) => x.cid === id);
+    S.charms = S.charms.filter((x) => x.cid !== id); S.dust += CHARM_RARITY[ch.rarity].salvage; confirmSalvage = null;
+    save(); toast(`Salvaged for ${CHARM_RARITY[ch.rarity].salvage} stardust.`); refreshPanel();
+  }));
+  body.querySelectorAll('[data-unequip]').forEach((b) => (b.onclick = (e) => {
+    e.stopPropagation();
+    const id = Number(b.dataset.unequip), { ch, c } = worn.find((w) => w.ch.cid === id);
+    unequipCharm(c, ch); refreshPanel();
+  }));
+}
+let teamTab = 'creatures';
+function teamTabs() {
+  return `<div class="tabs-row"><button class="${teamTab === 'creatures' ? 'on' : ''}" data-tab="creatures">Creatures</button><button class="${teamTab === 'charms' ? 'on' : ''}" data-tab="charms">Charms ${S.charms.length ? `<span class="count">${S.charms.length}</span>` : ''}</button></div>`;
+}
+function bindTeamTabs(body) {
+  body.querySelectorAll('.tabs-row [data-tab]').forEach((b) => (b.onclick = () => { teamTab = b.dataset.tab; refreshPanel(); body.scrollTop = 0; }));
+}
 function dustValue(c) { return 5 * stars(c.roll) + 8 * c.traits.length + (c.shiny ? 100 : 0); }
 
 function traitChips(c, withDesc = false) {
@@ -721,7 +869,8 @@ async function wildEncounter() {
     const xpRows = awardKills(lastReport);
     const coins = giveCoins(4 + lv * 2);
     const pick = enemy.find((e) => e.shiny) || rand(enemy);
-    await befriend(pick, `<div class="result-banner win">You won! <span class="hint">+${coins} coins</span></div>${xpRows}`);
+    const loot = enemy.some((e) => e.shiny) || Math.random() < (visitor ? 0.3 : 0.05) ? dropCharm(lv, 'wild') : null;
+    await befriend(pick, `<div class="result-banner win">You won! <span class="hint">+${coins} coins</span></div>${loot ? `<div class="loot-tease" style="--rc:${CHARM_RARITY[loot.rarity].color}">✦ A ${CHARM_RARITY[loot.rarity].name} charm dropped!</div>` : ''}${xpRows}`);
   } else if (result === 'draw') {
     await battleFooter(`<div class="result-banner">A tie!</div><p class="hint center">The wild creatures wandered off.</p>${awardKills(lastReport)}`, [{ key: 'ok', label: 'Continue', cls: 'primary' }]);
   } else {
@@ -778,7 +927,9 @@ async function trainerBattle(npc) {
     S.beaten[npc.id] = true;
     const xpRows = awardKills(lastReport, 2);
     const coins = giveCoins(tr.coins);
-    await battleFooter(`<div class="result-banner win">You beat ${esc(npc.name)}!</div><p class="hint center">+${coins} coins · Trainer battles give double XP</p>${xpRows}`, [{ key: 'ok', label: 'Continue', cls: 'primary' }]);
+    const top = Math.max(...enemy.map((e) => e.lvl));
+    const loot = tr.crest != null ? dropCharm(top, 'champion') : Math.random() < 0.4 ? dropCharm(top, 'trainer') : null;
+    await battleFooter(`<div class="result-banner win">You beat ${esc(npc.name)}!</div><p class="hint center">+${coins} coins · Trainer battles give double XP</p>${loot ? `<div class="loot-tease" style="--rc:${CHARM_RARITY[loot.rarity].color}">✦ A ${CHARM_RARITY[loot.rarity].name} charm dropped!</div>` : ''}${xpRows}`, [{ key: 'ok', label: 'Continue', cls: 'primary' }]);
     closeBattle(false);
     await say(npc.name, tr.after);
     if (tr.crest != null && S.crests < tr.crest + 1) { S.crests = tr.crest + 1; save(); updateHud(); await showCrest(tr.crest); }
@@ -947,10 +1098,11 @@ function monCard(c) {
 
 let rosterSort = 'level';
 function renderTeam(body) {
+  if (teamTab === 'charms') return renderCharms(body);
   const bonus = elementBonus(teamEntries().filter(Boolean));
   const bonusChips = Object.entries(bonus).map(([el, n]) => `<span class="chip"><span class="dot" style="background:${ELEMENTS[el].color}"></span>${ELEMENTS[el].name} team: +${n}/+${n}</span>`).join('');
   const sorters = { level: (a, b) => b.lvl - a.lvl, stars: (a, b) => stars(b.roll) - stars(a.roll) || b.traits.length - a.traits.length, kind: (a, b) => a.id.localeCompare(b.id) || b.lvl - a.lvl };
-  body.innerHTML = `
+  body.innerHTML = `${teamTabs()}
     <p class="hint">#1 fights first. Tap two creatures to swap them, or tap one twice to see it.</p>
     <div class="card" style="margin-top:8px">
       <div class="lineup-labels"><span>◀ Front</span><span>Back ▶</span></div>
@@ -964,6 +1116,7 @@ function renderTeam(body) {
   body.querySelectorAll('.slot').forEach((el) => (el.onclick = () => onSlot(Number(el.dataset.slot))));
   body.querySelectorAll('.mon').forEach((el) => (el.onclick = () => showCreature(Number(el.dataset.uid))));
   body.querySelectorAll('[data-sort]').forEach((el) => (el.onclick = () => { rosterSort = el.dataset.sort; refreshPanel(); }));
+  bindTeamTabs(body);
 }
 
 function onSlot(i) {
@@ -1015,6 +1168,10 @@ function showCreature(uid, confirmRelease = false) {
         ${upcoming.length ? `<div class="skill-sub">Coming up:</div><div class="skill-list">${upcoming.map(([l, k]) => `<div class="skill locked"><b>Lv ${l}</b> ${ABILITY[k].name}</div>`).join('')}</div>` : ''}
       </div>
       <div class="stat wide">Traits<div class="synergies trait-desc">${traitChips(c, true)}</div></div>
+      <div class="stat wide">Charms (${c.charms.length}/2)
+        <div class="charm-list">${c.charms.map((ch) => charmRow(ch, `<button class="btn small" data-off="${ch.cid}">Take off</button>`)).join('')}</div>
+        ${c.charms.length < 2 ? '<button class="btn small block" data-act="charm" style="margin-top:6px">Equip a charm</button>' : ''}
+      </div>
       <div class="stat wide">Hits ${beats} for extra damage.</div>
     </div>
     <div class="btn-row">
@@ -1053,6 +1210,9 @@ function showCreature(uid, confirmRelease = false) {
     if (levelUps.size || evoQueue.length || learnQueue.length) { closeModal(); celebrate().then(() => showCreature(uid)); } else showCreature(uid);
   });
   on('merge', () => { if (twins.length) pickMergeDonor(c, twins); });
+  const cb = sheet.querySelector('[data-act=charm]');
+  if (cb) cb.onclick = () => pickCharmFor(c);
+  sheet.querySelectorAll('[data-off]').forEach((b) => (b.onclick = () => { unequipCharm(c, c.charms.find((x) => x.cid === Number(b.dataset.off))); showCreature(uid); refreshPanel(); }));
   sheet.querySelectorAll('[data-teach]').forEach((b) => (b.onclick = () => {
     const k = b.dataset.teach;
     if (c.skills.length < MAX_SKILLS) { c.skills.push(k); save(); showCreature(uid); refreshPanel(); }
@@ -1076,6 +1236,7 @@ function showCreature(uid, confirmRelease = false) {
     if (inTeam && teamSize() <= 1) { toast('Add another creature to your team first.'); return; }
     if (!confirmRelease) { showCreature(uid, true); return; }
     if (S.riding === uid) setRiding(null);
+    S.charms.push(...c.charms); c.charms = [];
     S.roster = S.roster.filter((x) => x.uid !== uid);
     if (inTeam) S.team[S.team.indexOf(uid)] = null;
     S.dust += dustValue(c);
@@ -1134,6 +1295,7 @@ function doMerge(c, donor, gift) {
   c.roll = { a: Math.max(c.roll.a, donor.roll.a), h: Math.max(c.roll.h, donor.roll.h) };
   c.shiny = c.shiny || donor.shiny;
   setLevel(c, Math.max(c.lvl, donor.lvl) + 1);
+  S.charms.push(...(donor.charms || []));
   S.roster = S.roster.filter((x) => x.uid !== donor.uid);
   const di = S.team.indexOf(donor.uid);
   if (di >= 0) S.team[di] = S.team.includes(c.uid) ? null : c.uid;
@@ -1377,7 +1539,10 @@ async function arenaBattle({ rival, friend }) {
   const result = await playBattle(`Arena · vs ${foe}`, rival ? rival.team : friend.team);
   let reward = '';
   if (rival) {
-    if (result === 'win') { S.coins += rival.coins; S.trophies += rival.trophies; reward = `+${rival.coins} coins · +${rival.trophies} trophies`; }
+    if (result === 'win') {
+      S.coins += rival.coins; S.trophies += rival.trophies; reward = `+${rival.coins} coins · +${rival.trophies} trophies`;
+      if (Math.random() < 0.2) { const ch = dropCharm(rival.lvl, 'trainer'); reward += ` · ✦ ${CHARM_RARITY[ch.rarity].name} charm!`; }
+    }
     else if (result === 'lose') { S.trophies = Math.max(0, S.trophies - 3); reward = '-3 trophies'; }
     S.rivals = genRivals();
   } else if (result === 'win') { S.coins += 20; reward = '+20 coins'; }

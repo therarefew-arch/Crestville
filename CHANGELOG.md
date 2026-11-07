@@ -2,6 +2,17 @@
 
 The version shows at the bottom of the game screen. Each update adds 1.
 
+## v0.0.09
+- Charms: loot with random bonus stats, in Common, Rare, Epic and Legendary. 11 possible
+  stats: attack, HP, % attack, % HP, a stronger first hit, bonus attack while first in line,
+  thorns, healing after attacks, damage reduction, extra XP and extra coins. Better rarities
+  roll more stats and bigger numbers; higher-level drops are stronger.
+- Champions always drop a charm (often Epic or Legendary). Trainers drop one 40% of the time,
+  Arena rivals 20%, wild creatures 5% (rare visitors 30%, shinies always).
+- Loot reveal with spinning rays, a tumbling gem and stats popping in. Legendaries get a fanfare.
+- Each creature wears up to 2 charms. New Charms tab in Team; equip from there or a creature's
+  page. Salvage spare charms for stardust.
+
 ## v0.0.08
 - Bicycles: buy one at any Market for 400 coins. Twice as fast as walking, with a bell.
 - Creature mounts: ride any creature at Lv 20 or higher. Perks by type: water creatures and
