@@ -2,6 +2,16 @@
 
 The version shows at the bottom of the game screen. Each update adds 1.
 
+## v0.0.07
+- All 60 creatures redesigned to look more alien, while keeping the cozy style. Each species
+  has its own fixed mix of: one big eye, two, three or four eyes, or eyes on stalks (all with
+  colored irises and slit pupils); feet, four legs, tentacles, a slug foot, or hovering over a
+  glowing ring; glowing spots, veins, rings or spirals; and mouths with tiny fangs, zigzag
+  grins or none at all.
+- Skin has a two-tone shimmer and contrasting accent colors.
+- Animal ears became see-through fronds, swept-back fins or glowing orbs. Whiskers became
+  feelers with glowing tips. Some species have glowing bumps along their backs.
+
 ## v0.0.06
 - After every battle, XP bars fill with rolling numbers and rising ticks. A full bar bursts
   "LEVEL UP!", dings, bumps the level and keeps filling.
