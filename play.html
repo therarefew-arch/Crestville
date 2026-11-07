@@ -1,0 +1,69 @@
+<title>Crestville</title>
+<meta name="theme-color" content="#fbf3e3">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>html, body { height: 100%; background: #fbf3e3; color-scheme: light; }</style>
+
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <svg viewBox="0 0 24 24" class="brand-crest" aria-hidden="true"><path d="M12 2 L20 5 V11 C20 16 16.5 20 12 22 C7.5 20 4 16 4 11 V5 Z" fill="#e88c7d" stroke="#5b4636" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 13 L11 9 L13 12 L14.5 10.5 L17 13" fill="none" stroke="#fffaf0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Crestville
+      </div>
+      <div class="pills">
+        <span class="pill" title="Coins"><span class="coin"></span><b id="coins">0</b></span>
+        <span class="pill" title="Crests"><svg viewBox="0 0 24 24" class="mini-crest" aria-hidden="true"><path d="M12 2 L20 5 V11 C20 16 16.5 20 12 22 C7.5 20 4 16 4 11 V5 Z" fill="#f6d36b" stroke="#5b4636" stroke-width="2" stroke-linejoin="round"/></svg><b id="crests">0/5</b></span>
+      </div>
+    </header>
+
+    <main>
+      <section id="screen-adventure" class="screen active">
+        <div class="stage-head">
+          <div>
+            <div class="region-name" id="region-name"></div>
+            <div class="stage-label" id="stage-label"></div>
+          </div>
+          <div class="crest-row" id="crest-row"></div>
+        </div>
+        <div class="arena" id="arena">
+          <div class="scenery" id="scenery"></div>
+          <div class="banner" id="banner"></div>
+          <div class="side enemy-side">
+            <div class="row" id="enemy-back"></div>
+            <div class="row" id="enemy-front"></div>
+          </div>
+          <div class="side ally-side">
+            <div class="row" id="ally-front"></div>
+            <div class="row" id="ally-back"></div>
+          </div>
+        </div>
+        <div class="log" id="log" aria-live="polite"></div>
+        <div class="controls">
+          <button id="btn-play" class="btn primary">Start adventure</button>
+          <button id="btn-speed" class="btn">1×</button>
+          <button id="btn-push" class="btn small-text">Auto-advance<br><b>On</b></button>
+        </div>
+      </section>
+
+      <section id="screen-team" class="screen"></section>
+      <section id="screen-hatchery" class="screen"></section>
+      <section id="screen-arena" class="screen"></section>
+    </main>
+
+    <nav class="tabs" id="tabs">
+      <button data-tab="adventure" class="active"><span class="ico" data-icon="adventure"></span>Adventure</button>
+      <button data-tab="team"><span class="ico" data-icon="team"></span>Team</button>
+      <button data-tab="hatchery"><span class="ico" data-icon="hatchery"></span>Hatchery</button>
+      <button data-tab="arena"><span class="ico" data-icon="arena"></span>Arena</button>
+    </nav>
+
+    <div id="modal" class="modal hidden"><div class="sheet" id="sheet"></div></div>
+    <div id="toasts"></div>
+  </div>
+
+  <script src="js/data.js"></script>
+  <script src="js/art.js"></script>
+  <script src="js/battle.js"></script>
+  <script src="js/main.js"></script>
