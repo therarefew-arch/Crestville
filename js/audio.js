@@ -177,6 +177,13 @@ function sfx(name, arg = 0) {
       tone('sine', n(57), t, 1.1, 0.08, 0.05, out, n(69));
       tone('triangle', n(64), t + 0.2, 0.9, 0.04, 0.05, out, n(76));
       break;
+    case 'bell':
+      tone('sine', n(91), t, 0.5, 0.08, 0.002, out); tone('sine', n(91), t + 0.16, 0.6, 0.07, 0.002, out);
+      tone('triangle', n(98), t, 0.3, 0.025, 0.002, out); tone('triangle', n(98), t + 0.16, 0.35, 0.02, 0.002, out);
+      break;
+    case 'mount':
+      tone('triangle', n(60), t, 0.15, 0.08, 0.005, out); tone('triangle', n(67), t + 0.09, 0.15, 0.08, 0.005, out); tone('triangle', n(72), t + 0.18, 0.3, 0.08, 0.005, out);
+      break;
     case 'count':
       tone('sine', 620 + arg * 28, t, 0.05, 0.035, 0.003, out);
       break;

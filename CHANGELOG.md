@@ -2,6 +2,13 @@
 
 The version shows at the bottom of the game screen. Each update adds 1.
 
+## v0.0.08
+- Bicycles: buy one at any Market for 400 coins. Twice as fast as walking, with a bell.
+- Creature mounts: ride any creature at Lv 20 or higher. Perks by type: water creatures and
+  hovering creatures cross water, fire creatures cross lava, leaf and shade creatures halve wild
+  battles, spark creatures are extra fast.
+- New Ride button on the right Joy-Con to pick Walk, Bicycle or a creature.
+
 ## v0.0.07
 - All 60 creatures redesigned to look more alien, while keeping the cozy style. Each species
   has its own fixed mix of: one big eye, two, three or four eyes, or eyes on stalks (all with

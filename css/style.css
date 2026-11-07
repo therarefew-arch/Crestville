@@ -133,6 +133,8 @@ p { margin: 4px 0; }
 }
 .a-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
 .jc-face #btn-team { position: absolute; left: 10%; top: 14px; width: 46px; height: 46px; }
+.jc-face #btn-ride { position: absolute; left: 10%; bottom: 18px; width: 46px; height: 46px; }
+.face-btn.on { background: #fbe9dc; box-shadow: 0 1px 0 var(--ink); transform: translateY(2px); }
 .gear-btn {
   width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--ink); background: var(--card); color: var(--ink);
   box-shadow: 0 2px 0 var(--ink); padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; flex: none; margin-left: 4px;
@@ -521,12 +523,27 @@ button.skill { font: inherit; font-size: 13px; border: 2px dashed #e9cf9a; curso
 .lane.shake { animation: laneShake .32s ease; }
 @keyframes laneShake { 20% { transform: translate(-5px, 2px); } 40% { transform: translate(5px, -2px); } 60% { transform: translate(-3px, 1px); } 80% { transform: translate(2px, 0); } }
 
+/* Ride */
+.ride-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.ride-row {
+  display: flex; align-items: center; gap: 10px; text-align: left; font: inherit; color: var(--ink); cursor: pointer;
+  background: var(--card); border: 2px solid var(--line); border-radius: 16px; padding: 6px 10px;
+}
+.ride-row.on { border-color: var(--coral-dark); background: #fbe9dc; }
+.ride-row.locked { opacity: .55; cursor: default; }
+.ride-row b { display: block; font-family: 'Fredoka', sans-serif; font-weight: 600; }
+.ride-row small { color: var(--ink-soft); font-size: 12px; }
+.ride-art { width: 44px; height: 44px; flex: none; display: flex; align-items: center; justify-content: center; }
+.ride-art svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.bike-big { width: 46px; height: 46px; flex: none; color: var(--coral-dark); }
+.bike-big svg { width: 100%; height: 100%; }
 @media (max-height: 700px) {
   .joycon { height: 138px; }
   .stick { width: 94px; height: 94px; }
   .stick-knob { width: 48px; height: 48px; margin: -24px 0 0 -24px; }
   .face-btn small { display: none; }
   .jc-face #btn-team { width: 40px; height: 40px; top: 10px; left: 8%; }
+  .jc-face #btn-ride { width: 40px; height: 40px; bottom: 14px; left: 8%; }
   .a-btn { width: 76px; height: 76px; font-size: 32px; right: 10%; bottom: 14px; }
   .padbar { padding: 6px 10px 16px; }
   .jc-hint { display: none; }

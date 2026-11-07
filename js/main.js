@@ -8,7 +8,7 @@ function freshState() {
   return {
     name: '', coins: 60, berries: 2, crests: 0,
     roster: [], team: [null, null, null, null, null], nextUid: 1,
-    eggCost: 100, trophies: 0, rivals: null, speed: 1, dust: 0, pity: 0, seen: [], visited: ['town'], lastTown: 'town', music: true, sfx: true, worldSeed: newSeed(),
+    eggCost: 100, trophies: 0, rivals: null, speed: 1, dust: 0, pity: 0, seen: [], visited: ['town'], lastTown: 'town', music: true, sfx: true, bike: false, riding: null, worldSeed: newSeed(),
     map: 'town', x: MAPS.town.start[0], y: MAPS.town.start[1], dir: 'down', beaten: {},
   };
 }
@@ -107,7 +107,7 @@ function nameOf(c) { return SPECIES_BY_ID[c.id].names[evoStage(c.lvl)]; }
 function xpNeed(lvl) { return 8 + lvl * 6; }
 function teamEntries() { return S.team.map((uid) => (uid != null ? byUid(uid) || null : null)); }
 function teamSize() { return S.team.filter((u) => u != null).length; }
-function leadCreature() { return teamEntries().find(Boolean) || null; }
+function leadCreature() { return teamEntries().find((c) => c && !(World.mount && World.mount.uid === c.uid)) || null; }
 function art(c, sp = SPECIES_BY_ID[c.id]) { return creatureSVG(sp, evoStage(c.lvl), { shiny: c.shiny }); }
 function starText(c) { const n = stars(c.roll); return '★'.repeat(n) + '<span class="dim">' + '★'.repeat(5 - n) + '</span>'; }
 
@@ -849,7 +849,7 @@ async function onStep(x, y) {
   }
   save();
   if (await checkSight()) return;
-  if (tileAt(x, y) === ',' && World.map.wild && stepsSinceBattle > 2 && teamSize() && Math.random() < 0.13) wildEncounter();
+  if (tileAt(x, y) === ',' && World.map.wild && stepsSinceBattle > 2 && teamSize() && Math.random() < 0.13 * (World.mount && World.mount.calm ? 0.5 : 1)) wildEncounter();
 }
 
 async function checkSight() {
@@ -1075,6 +1075,7 @@ function showCreature(uid, confirmRelease = false) {
     if (S.roster.length <= 1) { toast("You can't release your only creature."); return; }
     if (inTeam && teamSize() <= 1) { toast('Add another creature to your team first.'); return; }
     if (!confirmRelease) { showCreature(uid, true); return; }
+    if (S.riding === uid) setRiding(null);
     S.roster = S.roster.filter((x) => x.uid !== uid);
     if (inTeam) S.team[S.team.indexOf(uid)] = null;
     S.dust += dustValue(c);
@@ -1223,12 +1224,75 @@ function renderMarket(body) {
       <button class="btn primary small" data-buy="1">Buy 1</button>
       <button class="btn small" data-buy="5">Buy 5</button>
     </div>
-    <p class="hint" style="margin-top:14px">More goods are on the way: gear, charms and outfits.</p>`;
+    <div class="card shop-row" style="margin-top:10px">
+      <span class="bike-big">${ICONS.bike}</span>
+      <div><b>Bicycle</b><div class="hint">${S.bike ? 'You own one! Tap Ride to hop on.' : `${BIKE_COST} coins · Twice as fast as walking`}</div></div>
+      ${S.bike ? '' : '<button class="btn primary small" id="buy-bike">Buy</button>'}
+    </div>
+    <p class="hint" style="margin-top:14px">Creatures at Lv ${MOUNT_LEVEL}+ can be ridden too. Some can cross water or lava.</p>`;
+  const bb = $('#buy-bike');
+  if (bb) bb.onclick = () => {
+    if (S.coins < BIKE_COST) { toast(`You need ${BIKE_COST} coins.`); return; }
+    S.coins -= BIKE_COST; S.bike = true; save(); updateHud(); refreshPanel();
+    sfx('bell'); toast('You got a Bicycle! Tap <b>Ride</b> to hop on.');
+  };
   body.querySelectorAll('[data-buy]').forEach((b) => (b.onclick = () => {
     const n = Number(b.dataset.buy), cost = 15 * n;
     if (S.coins < cost) { toast(`You need ${cost} coins.`); return; }
     S.coins -= cost; S.berries += n; save(); updateHud(); refreshPanel();
     toast(`Bought ${n} Sweet Berr${n > 1 ? 'ies' : 'y'}!`);
+  }));
+}
+
+// ---------- mounts ----------
+const BIKE_COST = 400, MOUNT_LEVEL = 20;
+// Each creature mount has a perk based on its element and how it moves.
+function mountPerks(c) {
+  const sp = SPECIES_BY_ID[c.id], A = alienOf(sp);
+  const swim = sp.el === 'water' || A.move === 'hover';
+  const lava = sp.el === 'fire';
+  const calm = sp.el === 'leaf' || sp.el === 'shade';
+  const speed = sp.el === 'spark' ? 0.1 : 0.12;
+  const text = [speed < 0.12 ? 'Extra fast' : 'Fast', swim && 'crosses water', lava && 'crosses lava', calm && 'half as many wild battles'].filter(Boolean).join(' · ');
+  return { swim, lava, calm, speed, text };
+}
+function applyMount() {
+  const r = S.riding;
+  if (r === 'bike' && S.bike) World.mount = { type: 'bike', speed: 0.13 };
+  else if (r != null && r !== 'bike') {
+    const c = byUid(r);
+    if (c && c.lvl >= MOUNT_LEVEL) World.mount = { type: 'creature', uid: c.uid, id: c.id, stage: evoStage(c.lvl), shiny: c.shiny, ...mountPerks(c) };
+    else { S.riding = null; World.mount = null; }
+  } else World.mount = null;
+  const b = $('#btn-ride');
+  if (b) b.classList.toggle('on', !!World.mount);
+}
+function setRiding(r) {
+  // Don't leave the player stuck on water or lava after getting off.
+  const p = World.player, c = tileAt(p.x, p.y);
+  const prev = S.riding;
+  S.riding = r; applyMount();
+  if (c === '~' && !canCross(c)) { S.riding = prev; applyMount(); toast("You can't get off here. Head back to land first."); return; }
+  save();
+  if (World.mount) sfx(World.mount.type === 'bike' ? 'bell' : 'mount');
+}
+function openRide() {
+  if (busy || dialogOpen) return;
+  const mounts = S.roster.filter((c) => c.lvl >= MOUNT_LEVEL).sort((a, b) => b.lvl - a.lvl);
+  const row = (key, art, name, note, on) => `<button class="ride-row ${on ? 'on' : ''}" data-ride="${key}"><span class="ride-art">${art}</span><span><b>${name}</b><small>${note}</small></span></button>`;
+  const sheet = openModal(`<h2>Ride</h2>
+    <div class="ride-list">
+      ${row('walk', ICONS.walk, 'Walk', 'A gentle stroll.', !S.riding)}
+      ${S.bike ? row('bike', ICONS.bike, 'Bicycle', 'Twice as fast. Ding ding!', S.riding === 'bike') : `<div class="ride-row locked"><span class="ride-art">${ICONS.bike}</span><span><b>Bicycle</b><small>Buy one at any Market for ${BIKE_COST} coins.</small></span></div>`}
+      ${mounts.map((c) => row(c.uid, art(c), `${esc(nameOf(c))} <span class="hint">Lv ${c.lvl}</span>`, mountPerks(c).text, S.riding === c.uid)).join('')}
+      ${mounts.length ? '' : `<p class="hint">Creatures at Lv ${MOUNT_LEVEL} or higher can be ridden. Some can cross water or lava.</p>`}
+    </div>
+    <button class="btn block" data-close style="margin-top:10px">Close</button>`);
+  sheet.querySelector('[data-close]').onclick = closeModal;
+  sheet.querySelectorAll('[data-ride]').forEach((b) => (b.onclick = () => {
+    const k = b.dataset.ride;
+    closeModal();
+    setRiding(k === 'walk' ? null : k === 'bike' ? 'bike' : Number(k));
   }));
 }
 
@@ -1441,6 +1505,7 @@ function setupInput() {
 
   $('#btn-a').onclick = interact;
   $('#dialog').onclick = advanceDialog;
+  $('#btn-ride').onclick = openRide;
   $('#btn-team').onclick = () => { if (!busy && !dialogOpen) openPanel('Team', renderTeam); };
   $('#btn-settings').onclick = () => { if (!busy && !dialogOpen) openPanel('Settings', renderSettings); };
   $('#panel-close').onclick = closePanel;
@@ -1471,6 +1536,7 @@ function init() {
   const okSpot = (m, x, y) => { const c = (MAPS[m].tiles[y] || '')[x]; return c && !'T~#BS^'.includes(c) && !MAPS[m].npcs.some((n) => n.x === x && n.y === y); };
   if (okSpot(map, S.x, S.y)) enterMap(map, S.x, S.y, S.dir);
   else enterMap(map, MAPS[map].start[0], MAPS[map].start[1], 'down');
+  applyMount();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => worldBake());
   updateHud();
   inputTick();

@@ -43,8 +43,15 @@ function doorAt(x, y) {
 function isSign(x, y) {
   return World.map.signs[`${x},${y}`] != null;
 }
+// World.mount: null, { type: 'bike' }, or { type: 'creature', id, stage, shiny, swim, lava, speed }.
+function canCross(c) {
+  const m = World.mount;
+  if (c !== '~' || !m || m.type !== 'creature') return false;
+  return (World.map.theme || 'meadow') === 'ember' ? m.lava : m.swim;
+}
 function walkable(x, y) {
   const c = tileAt(x, y);
+  if (canCross(c) && !isSign(x, y)) return !npcAt(x, y);
   if ('T~#BS^'.includes(c) || isSign(x, y)) return false;
   return !npcAt(x, y);
 }
@@ -438,6 +445,37 @@ function drawPerson(g, cx, cy, look, dir, walk, T) {
   }
 }
 
+// The player, on foot, on a bicycle, or riding a creature.
+function drawRider(g, cx, cy, T) {
+  const p = World.player, m = World.mount, walk = p.moving ? p.walk : 0;
+  if (!m) return drawPerson(g, cx, cy, LOOKS.player, p.dir, walk, T);
+  if (m.type === 'creature') {
+    const img = creatureImage(m.id, m.stage, m.shiny);
+    const bob = Math.sin(walk * Math.PI * 2) * T * 0.04;
+    if (img.complete) g.drawImage(img, cx - T * 0.62, cy - T * 0.3 + bob, T * 1.24, T * 1.24 * 112 / 116);
+    return drawPerson(g, cx, cy - T * 0.42 + bob, LOOKS.player, p.dir, 0, T);
+  }
+  // Bicycle
+  const side = p.dir === 'left' || p.dir === 'right';
+  g.lineWidth = 2; g.strokeStyle = INK_C;
+  const spin = walk * Math.PI * 4;
+  const wheel = (x, y, rx, ry) => {
+    g.fillStyle = 'rgba(255,250,240,.6)'; g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, 7); g.fill(); g.stroke();
+    g.beginPath(); g.moveTo(x - Math.cos(spin) * rx, y - Math.sin(spin) * ry); g.lineTo(x + Math.cos(spin) * rx, y + Math.sin(spin) * ry); g.stroke();
+  };
+  if (side) {
+    const wx = T * 0.3, wy = cy + T * 0.3;
+    wheel(cx - wx, wy, T * 0.17, T * 0.17); wheel(cx + wx, wy, T * 0.17, T * 0.17);
+    g.strokeStyle = '#e88c7d'; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(cx - wx, wy); g.lineTo(cx - T * 0.02, wy - T * 0.18); g.lineTo(cx + wx, wy); g.moveTo(cx - T * 0.02, wy - T * 0.18); g.lineTo(cx + T * 0.2, wy - T * 0.26); g.stroke();
+  } else {
+    wheel(cx, cy + T * 0.18, T * 0.07, T * 0.17); wheel(cx, cy + T * 0.46, T * 0.07, T * 0.17);
+    g.strokeStyle = '#e88c7d'; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(cx - T * 0.2, cy + T * (p.dir === 'up' ? 0.1 : 0.05)); g.lineTo(cx + T * 0.2, cy + T * (p.dir === 'up' ? 0.1 : 0.05)); g.stroke();
+  }
+  drawPerson(g, cx, cy - T * 0.14, LOOKS.player, p.dir, walk * 2, T);
+}
+
 function drawBubble(g, cx, cy, text, T) {
   const s = T / 32;
   g.font = `700 ${Math.round(15 * s)}px Fredoka, sans-serif`;
@@ -455,7 +493,8 @@ function worldUpdate(dt) {
   World.time += dt;
   const p = World.player, f = World.follower;
   if (p.moving) {
-    const step = World.run ? RUN_TIME : STEP_TIME;
+    const m = World.mount;
+    const step = m ? (m.speed || 0.13) * (World.run ? 0.8 : 1) : World.run ? RUN_TIME : STEP_TIME;
     p.t += dt / step;
     f.t += dt / step;
     p.walk += dt / (step * 2);
@@ -518,7 +557,7 @@ function worldDraw() {
       items.push({ y: fy - 0.01, draw: () => img.complete && g.drawImage(img, fx * T + T * 0.06, fy * T - hop, T * 0.88, T * 0.88 * 112 / 116), tile: [Math.round(fx), Math.round(fy)] });
     }
   }
-  items.push({ y: py, draw: () => drawPerson(g, px * T + T / 2, py * T + T * 0.45, LOOKS.player, World.player.dir, World.player.moving ? World.player.walk : 0, T), tile: [World.player.x, World.player.y] });
+  items.push({ y: py, draw: () => drawRider(g, px * T + T / 2, py * T + T * 0.45, T), tile: [World.player.x, World.player.y] });
   items.sort((a, b) => a.y - b.y);
   for (const it of items) {
     it.draw();
