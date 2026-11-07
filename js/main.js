@@ -488,7 +488,7 @@ async function wildEncounter() {
     const pick = enemy.find((e) => e.shiny) || rand(enemy);
     await befriend(pick, `<div class="result-banner win">You won! <span class="hint">+${coins} coins</span></div>${xpRows}`);
   } else if (result === 'draw') {
-    await battleFooter('<div class="result-banner">A tie!</div><p class="hint center">The wild creatures wandered off.</p>', [{ key: 'ok', label: 'Continue', cls: 'primary' }]);
+    await battleFooter(`<div class="result-banner">A tie!</div><p class="hint center">The wild creatures wandered off.</p>${awardKills(lastReport)}`, [{ key: 'ok', label: 'Continue', cls: 'primary' }]);
   } else {
     await battleFooter(`<div class="result-banner lose">Your team is worn out</div><p class="hint center">Time to rest at home.</p>${awardKills(lastReport)}`, [{ key: 'ok', label: 'Go home', cls: 'primary' }]);
     closeBattle();
@@ -546,6 +546,9 @@ async function trainerBattle(npc) {
     closeBattle();
     await say(npc.name, tr.after);
     if (tr.crest != null && S.crests < tr.crest + 1) { S.crests = tr.crest + 1; save(); updateHud(); showCrest(tr.crest); }
+  } else if (result === 'draw') {
+    await battleFooter(`<div class="result-banner">A tie!</div><p class="hint center">Talk to ${esc(npc.name)} again for a rematch.</p>${awardKills(lastReport, 2)}`, [{ key: 'ok', label: 'Continue', cls: 'primary' }]);
+    closeBattle();
   } else {
     await battleFooter(`<div class="result-banner lose">${esc(npc.name)} won this time</div><p class="hint center">Train up, try a new lineup, and come back.</p>${awardKills(lastReport, 2)}`, [{ key: 'ok', label: 'Go home', cls: 'primary' }]);
     closeBattle();
