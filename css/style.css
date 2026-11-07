@@ -339,6 +339,19 @@ textarea:focus, input:focus { outline: none; border-color: var(--coral); }
 .choice { text-align: left; }
 .choice small { display: block; font-family: 'Nunito', sans-serif; font-size: 13px; color: var(--ink-soft); font-weight: 600; }
 
+/* XP and skills */
+.xp-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; margin: 2px 0 4px; }
+.xp-chip { font-size: 12px; background: var(--card); border: 1.5px solid var(--line); border-radius: 999px; padding: 2px 9px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.xp-chip b { color: var(--green-dark); }
+.result-banner .hint { font-family: 'Nunito', sans-serif; font-size: 15px; }
+.skill-head { margin-top: 10px; font-family: 'Fredoka', sans-serif; font-weight: 600; text-align: left; animation: rowIn .35s ease both; }
+.skill-list { display: flex; flex-direction: column; gap: 5px; margin-top: 5px; }
+.skill { background: var(--card); border-radius: 10px; padding: 6px 9px; font-size: 13px; color: var(--ink-soft); text-align: left; }
+.skill b { color: var(--ink); margin-right: 3px; }
+button.skill { font: inherit; font-size: 13px; border: 2px dashed #e9cf9a; cursor: pointer; }
+.skill.locked { opacity: .6; }
+.skill-sub { margin-top: 9px; font-size: 12px; }
+
 @media (max-height: 640px) {
   .dpad { grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(3, 40px); }
   .a-btn { width: 64px; height: 64px; font-size: 26px; }

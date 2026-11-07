@@ -23,6 +23,8 @@ function migrate(st) {
     if (!c.roll) c.roll = { a: 0.5, h: 0.5 };
     if (!c.traits) c.traits = rollTraits(SPECIES_BY_ID[c.id]);
     if (c.ab == null) c.ab = 0;
+    if (!c.skills) c.skills = defaultSkills(c.id, c.lvl, c.ab);
+    c.lvl = Math.min(MAX_LEVEL, c.lvl);
     if (c.shiny == null) c.shiny = false;
   }
   st.roster = st.roster.filter((c) => SPECIES_BY_ID[c.id]);
@@ -96,28 +98,111 @@ function rollCreature(id, lvl, { good = false } = {}) {
   const sp = SPECIES_BY_ID[id];
   const r = () => (good ? 0.65 + Math.random() * 0.35 : Math.random());
   const extra = good && RARITY[sp.rarity].traits < 3 ? 1 : 0;
+  const ab = Math.floor(Math.random() * sp.abilities.length);
   return {
     id, lvl, xp: 0,
     roll: { a: Math.round(r() * 100) / 100, h: Math.round(r() * 100) / 100 },
     traits: rollTraits(sp, Math.min(3, RARITY[sp.rarity].traits + extra + (Math.random() < 0.15 ? 1 : 0))),
-    ab: Math.floor(Math.random() * sp.abilities.length),
+    ab, skills: defaultSkills(id, lvl, ab),
     shiny: Math.random() < 1 / 128,
   };
 }
 // Fixed, average creature for trainers and bosses.
-function plainCreature(id, lvl) { return { id, lvl, xp: 0, roll: { a: 0.5, h: 0.5 }, traits: [], ab: 0, shiny: false }; }
+function plainCreature(id, lvl) { return { id, lvl, xp: 0, roll: { a: 0.5, h: 0.5 }, traits: [], ab: 0, skills: defaultSkills(id, lvl), shiny: false }; }
 
 function announceGrowth(c, oldLvl) {
   const before = evoStage(oldLvl), after = evoStage(c.lvl);
   if (after > before) toast(`✨ ${SPECIES_BY_ID[c.id].names[before]} grew into <b>${nameOf(c)}</b>!`);
 }
 function addXp(c, xp) {
+  if (c.lvl >= MAX_LEVEL) return 0;
   const old = c.lvl;
   c.xp += Math.round(xp * (c.traits.includes('scholar') ? 1.3 : 1));
-  while (c.xp >= xpNeed(c.lvl)) { c.xp -= xpNeed(c.lvl); c.lvl++; }
-  announceGrowth(c, old);
+  while (c.lvl < MAX_LEVEL && c.xp >= xpNeed(c.lvl)) { c.xp -= xpNeed(c.lvl); c.lvl++; }
+  if (c.lvl >= MAX_LEVEL) c.xp = 0;
+  afterLevelUp(c, old);
   return c.lvl - old;
 }
+function setLevel(c, lvl) {
+  const old = c.lvl;
+  c.lvl = Math.min(MAX_LEVEL, lvl);
+  if (c.lvl >= MAX_LEVEL) c.xp = 0;
+  afterLevelUp(c, old);
+}
+
+// New skills unlock at set levels. With a free slot they're learned right away;
+// with 4 already, the player chooses what to forget (or skips it).
+const learnQueue = [];
+function afterLevelUp(c, old) {
+  announceGrowth(c, old);
+  for (const [lvl, key] of learnsetFor(c.id, c.ab || 0)) {
+    if (lvl <= old || lvl > c.lvl || c.skills.includes(key)) continue;
+    if (c.skills.length < MAX_SKILLS) { c.skills.push(key); toast(`${esc(nameOf(c))} learned <b>${ABILITY[key].name}</b>!`); }
+    else learnQueue.push({ uid: c.uid, key });
+  }
+}
+let learning = false;
+async function processLearnQueue() {
+  if (learning) return;
+  learning = true;
+  while (learnQueue.length) {
+    const { uid, key } = learnQueue.shift();
+    const c = byUid(uid);
+    if (!c || c.skills.includes(key)) continue;
+    if (c.skills.length < MAX_SKILLS) { c.skills.push(key); continue; }
+    await promptLearn(c, key);
+  }
+  learning = false;
+  save();
+}
+function promptLearn(c, key, fromPage = false) {
+  return new Promise((resolve) => {
+    const sheet = openModal(`<div class="center"><div class="big-art" style="width:90px;height:90px">${art(c)}</div>
+      <h2>${esc(nameOf(c))} wants to learn ${ABILITY[key].name}!</h2></div>
+      <div class="trait-row ability-row"><b>${ABILITY[key].name}</b> ${abilityText(key, c.lvl)}</div>
+      <p class="hint" style="margin-top:10px">It already knows 4 skills. Forget one to make room?</p>
+      <div class="choice-list">${c.skills.map((k) => `<button class="btn block choice" data-forget="${k}"><b>Forget ${ABILITY[k].name}</b><small>${abilityText(k, c.lvl)}</small></button>`).join('')}</div>
+      <button class="btn primary block" data-act="skip" style="margin-top:10px">Don't learn it</button>
+      <p class="hint center" style="font-size:12px;margin-top:6px">Unlocked skills can be swapped in later from its page.</p>`);
+    sheet.querySelector('[data-act=skip]').onclick = () => { closeModal(); if (fromPage) showCreature(c.uid); resolve(false); };
+    sheet.querySelectorAll('[data-forget]').forEach((b) => (b.onclick = () => {
+      c.skills[c.skills.indexOf(b.dataset.forget)] = key;
+      save(); closeModal();
+      toast(`${esc(nameOf(c))} forgot ${ABILITY[b.dataset.forget].name} and learned <b>${ABILITY[key].name}</b>!`);
+      if (fromPage) showCreature(c.uid);
+      refreshPanel();
+      resolve(true);
+    }));
+  });
+}
+
+// XP comes from knockouts: the creature that lands it gets the full amount,
+// and every teammate gets a small share.
+function killXp(victimLvl) { return Math.round(4 + victimLvl * 3); }
+function awardKills(report, mult = 1) {
+  const team = teamEntries().filter(Boolean);
+  const earned = new Map(team.map((c) => [c, 0]));
+  let total = 0;
+  for (const k of (report && report.kills) || []) {
+    if (k.killerSide !== 'ally') continue;
+    const xp = Math.round(killXp(k.victimLvl) * mult);
+    total += xp;
+    if (earned.has(k.killer)) earned.set(k.killer, earned.get(k.killer) + xp);
+  }
+  for (const c of team) earned.set(c, earned.get(c) + Math.round(total * 0.2));
+  const rows = [];
+  for (const [c, xp] of earned) {
+    if (!xp) continue;
+    const before = c.lvl;
+    const capped = c.lvl >= MAX_LEVEL;
+    addXp(c, xp);
+    rows.push(`<span class="xp-chip">${esc(nameOf(c))} ${capped ? 'max' : `+${Math.round(xp * (c.traits.includes('scholar') ? 1.3 : 1))}`}${c.lvl > before ? ` <b>Lv ${c.lvl}!</b>` : ''}</span>`);
+  }
+  save();
+  return rows.length ? `<div class="xp-row">${rows.join('')}</div>` : '';
+}
+function giveCoins(n) { n = Math.round(n * coinBonus()); S.coins += n; save(); updateHud(); return n; }
+
 function giveCreature(c) {
   c = { ...c, uid: S.nextUid++, xp: 0 };
   S.roster.push(c);
@@ -126,14 +211,6 @@ function giveCreature(c) {
   return c;
 }
 function coinBonus() { return teamEntries().some((c) => c && c.traits.includes('lucky')) ? 1.25 : 1; }
-function rewardTeam(xp, coins) {
-  coins = Math.round(coins * coinBonus());
-  S.coins += coins;
-  const grew = [];
-  for (const c of teamEntries()) if (c && addXp(c, xp) > 0) grew.push(c);
-  save(); updateHud();
-  return { grew, coins };
-}
 function dustValue(c) { return 5 * stars(c.roll) + 8 * c.traits.length + (c.shiny ? 100 : 0); }
 
 function traitChips(c, withDesc = false) {
@@ -144,7 +221,6 @@ function traitChips(c, withDesc = false) {
 // Card shown when a creature joins: stars and traits pop in one by one.
 function revealHTML(c, title, note) {
   const sp = SPECIES_BY_ID[c.id];
-  const key = abilityKey(c);
   const n = stars(c.roll);
   return `<div class="center reveal">
     <h2>${title}</h2>
@@ -155,7 +231,8 @@ function revealHTML(c, title, note) {
       <span class="chip" style="color:${RARITY[sp.rarity].color}">${RARITY[sp.rarity].name}</span></div>
     <div class="stars-big">${[0, 1, 2, 3, 4].map((i) => `<span class="${i < n ? 'on' : 'off'}" style="animation-delay:${0.35 + i * 0.12}s">★</span>`).join('')}</div>
     <div class="trait-list">${c.traits.map((k, i) => `<div class="trait-row" style="animation-delay:${1 + i * 0.25}s"><b>${TRAITS[k].name}</b> ${TRAITS[k].desc}</div>`).join('')}</div>
-    <div class="trait-row ability-row" style="animation-delay:${1.1 + c.traits.length * 0.25}s"><b>${ABILITY[key].name}</b> ${abilityText(key, c.lvl)}</div>
+    <div class="skill-head" style="animation-delay:${1 + c.traits.length * 0.25}s">Skills</div>
+    ${c.skills.map((k, i) => `<div class="trait-row ability-row" style="animation-delay:${1.1 + (c.traits.length + i) * 0.2}s"><b>${ABILITY[k].name}</b> ${abilityText(k, c.lvl)}</div>`).join('')}
     ${note ? `<p class="hint" style="margin-top:8px">${note}</p>` : ''}
   </div>`;
 }
@@ -256,7 +333,7 @@ function makeBattleUI() {
       lane.querySelectorAll('.bu').forEach((e) => e.remove());
       els.clear();
       for (const u of [...B.ally, ...B.enemy]) {
-        const stage = u.t - 1;
+        const stage = u.stage;
         const e = h(`<div class="bu ${u.side} stage-${stage}"><div class="spr">${creatureSVG(u.sp, stage, { shiny: u.shiny })}</div>
           <div class="badge-atk">${u.atk}</div><div class="badge-hp">${u.hp}</div>
           <div class="lbl">${esc(u.sp.names[stage])}<small>Lv ${u.lvl}</small></div></div>`);
@@ -309,7 +386,7 @@ function previewSide(team, side) {
   const bonus = elementBonus(list);
   return list.map((c, i) => {
     const st = creatureStats(c), sp = SPECIES_BY_ID[c.id], b = bonus[sp.el] || 0;
-    return { key: 'p' + side + i, id: c.id, sp, lvl: c.lvl, t: evoStage(c.lvl) + 1, shiny: !!c.shiny, atk: st.atk + b, hp: st.hp + b, side };
+    return { key: 'p' + side + i, id: c.id, sp, lvl: c.lvl, stage: evoStage(c.lvl), shiny: !!c.shiny, atk: st.atk + b, hp: st.hp + b, side };
   });
 }
 
@@ -336,6 +413,7 @@ async function scout(ui, enemy, canRun) {
   }
 }
 let scoutSel = null;
+let lastReport = {};
 
 async function playBattle(title, enemy, { canRun = false } = {}) {
   busy = true; syncPause();
@@ -348,7 +426,8 @@ async function playBattle(title, enemy, { canRun = false } = {}) {
   const choice = await scout(ui, enemy, canRun);
   if (choice === 'run') return 'run';
   $('#b-foot').innerHTML = '<p class="hint center">Front fights front. When one faints, the next steps up.</p>';
-  const result = await runBattle(teamEntries(), enemy, ui);
+  lastReport = {};
+  const result = await runBattle(teamEntries(), enemy, ui, lastReport);
   await sleep(BUI.skip ? 100 : 400);
   return result;
 }
@@ -363,10 +442,7 @@ function battleFooter(html, buttons) {
 function closeBattle() {
   $('#battle').classList.add('hidden');
   busy = false; syncPause();
-}
-function grewText(grew) {
-  if (!grew.length) return '';
-  return ` · ${grew.length > 1 ? 'Your team' : esc(nameOf(grew[0]))} leveled up!`;
+  if (learnQueue.length) setTimeout(processLearnQueue, 50);
 }
 
 // ---------- encounters ----------
@@ -407,14 +483,14 @@ async function wildEncounter() {
     await battleFooter('<div class="result-banner">You slipped away safely.</div>', [{ key: 'ok', label: 'Continue', cls: 'primary' }]);
   } else if (result === 'win') {
     const lv = avgLvl(enemy);
-    const xp = Math.round(5 + lv * 3);
-    const { grew, coins } = rewardTeam(xp, Math.round(4 + lv * 2));
+    const xpRows = awardKills(lastReport);
+    const coins = giveCoins(4 + lv * 2);
     const pick = enemy.find((e) => e.shiny) || rand(enemy);
-    await befriend(pick, `<div class="result-banner win">You won!</div><p class="hint center">+${xp} XP · +${coins} coins${grewText(grew)}</p>`);
+    await befriend(pick, `<div class="result-banner win">You won! <span class="hint">+${coins} coins</span></div>${xpRows}`);
   } else if (result === 'draw') {
     await battleFooter('<div class="result-banner">A tie!</div><p class="hint center">The wild creatures wandered off.</p>', [{ key: 'ok', label: 'Continue', cls: 'primary' }]);
   } else {
-    await battleFooter('<div class="result-banner lose">Your team is worn out</div><p class="hint center">Time to rest at home.</p>', [{ key: 'ok', label: 'Go home', cls: 'primary' }]);
+    await battleFooter(`<div class="result-banner lose">Your team is worn out</div><p class="hint center">Time to rest at home.</p>${awardKills(lastReport)}`, [{ key: 'ok', label: 'Go home', cls: 'primary' }]);
     closeBattle();
     return goHome();
   }
@@ -430,7 +506,7 @@ async function befriend(wild, header) {
     <div><b>${esc(name)}</b> <span class="hint">Lv ${wild.lvl}</span> ${wild.shiny ? '<b class="shiny-tag">✦ Shiny</b>' : ''}
       <div class="stars-line">${starText(wild)}</div>
       <div class="synergies">${traitChips(wild)}</div>
-      <div class="hint" style="font-size:12px"><b>${ABILITY[abilityKey(wild)].name}:</b> ${abilityText(abilityKey(wild), wild.lvl)}</div>
+      <div class="hint" style="font-size:12px">Skills: ${wild.skills.map((k) => `<b>${ABILITY[k].name}</b>`).join(', ')}</div>
     </div></div>
     <p class="hint center" style="font-size:13px">It's watching you curiously.</p>`;
   const buttons = [{ key: 'wave', label: 'Wave hello' }, { key: 'leave', label: 'Leave' }];
@@ -464,13 +540,14 @@ async function trainerBattle(npc) {
   stepsSinceBattle = 0;
   if (result === 'win') {
     S.beaten[npc.id] = true;
-    const { grew, coins } = rewardTeam(Math.round((5 + avgLvl(enemy) * 3) * 2.5), tr.coins);
-    await battleFooter(`<div class="result-banner win">You beat ${esc(npc.name)}!</div><p class="hint center">+${coins} coins${grewText(grew)}</p>`, [{ key: 'ok', label: 'Continue', cls: 'primary' }]);
+    const xpRows = awardKills(lastReport, 2);
+    const coins = giveCoins(tr.coins);
+    await battleFooter(`<div class="result-banner win">You beat ${esc(npc.name)}!</div><p class="hint center">+${coins} coins · Trainer battles give double XP</p>${xpRows}`, [{ key: 'ok', label: 'Continue', cls: 'primary' }]);
     closeBattle();
     await say(npc.name, tr.after);
     if (tr.crest != null && S.crests < tr.crest + 1) { S.crests = tr.crest + 1; save(); updateHud(); showCrest(tr.crest); }
   } else {
-    await battleFooter(`<div class="result-banner lose">${esc(npc.name)} won this time</div><p class="hint center">Train up, try a new lineup, and come back.</p>`, [{ key: 'ok', label: 'Go home', cls: 'primary' }]);
+    await battleFooter(`<div class="result-banner lose">${esc(npc.name)} won this time</div><p class="hint center">Train up, try a new lineup, and come back.</p>${awardKills(lastReport, 2)}`, [{ key: 'ok', label: 'Go home', cls: 'primary' }]);
     closeBattle();
     await goHome();
   }
@@ -627,9 +704,9 @@ function showCreature(uid, confirmRelease = false) {
   const sp = SPECIES_BY_ID[c.id];
   const stage = evoStage(c.lvl);
   const st = creatureStats(c);
-  const key = abilityKey(c);
   const inTeam = S.team.includes(uid);
-  const others = sp.abilities.filter((k) => k !== key).map((k) => ABILITY[k].name).join(', ');
+  const unlocked = [...new Set([sp.abilities[Math.min(c.ab || 0, sp.abilities.length - 1)], ...learnsetFor(c.id, c.ab || 0).filter(([l]) => l <= c.lvl).map(([, k]) => k)])].filter((k) => !c.skills.includes(k));
+  const upcoming = learnsetFor(c.id, c.ab || 0).filter(([l, k]) => l > c.lvl && !c.skills.includes(k));
   const nextEvo = stage === 0 ? `Grows into ${sp.names[1]} at Lv 10.` : stage === 1 ? `Grows into ${sp.names[2]} at Lv 25.` : 'Fully grown!';
   const beats = ELEMENTS[sp.el].beats.map((e) => ELEMENTS[e].name).join(' & ');
   const twins = S.roster.filter((x) => x.id === c.id && x.uid !== uid);
@@ -646,13 +723,17 @@ function showCreature(uid, confirmRelease = false) {
     <div class="stats">
       <div class="stat">Attack<b>${st.atk}</b><small>${Math.round(c.roll.a * 100)}% roll</small></div>
       <div class="stat">HP<b>${st.hp}</b><small>${Math.round(c.roll.h * 100)}% roll</small></div>
-      <div class="stat wide"><b style="display:inline">${ABILITY[key].name}</b><br>${abilityText(key, c.lvl)}${others ? `<br><small>Other ${esc(sp.names[0])} can have: ${others}</small>` : ''}</div>
+      <div class="stat wide">Skills (${c.skills.length}/${MAX_SKILLS})
+        <div class="skill-list">${c.skills.map((k) => `<div class="skill"><b>${ABILITY[k].name}</b> ${abilityText(k, c.lvl)}</div>`).join('')}</div>
+        ${unlocked.length ? `<div class="skill-sub">Unlocked, tap to swap in:</div><div class="skill-list">${unlocked.map((k) => `<button class="skill swap" data-teach="${k}"><b>${ABILITY[k].name}</b> ${abilityText(k, c.lvl)}</button>`).join('')}</div>` : ''}
+        ${upcoming.length ? `<div class="skill-sub">Coming up:</div><div class="skill-list">${upcoming.map(([l, k]) => `<div class="skill locked"><b>Lv ${l}</b> ${ABILITY[k].name}</div>`).join('')}</div>` : ''}
+      </div>
       <div class="stat wide">Traits<div class="synergies trait-desc">${traitChips(c, true)}</div></div>
       <div class="stat wide">Hits ${beats} for extra damage.</div>
     </div>
     <div class="btn-row">
       <button class="btn ${inTeam ? '' : 'green'}" data-act="team">${inTeam ? 'Rest at home' : 'Add to team'}</button>
-      <button class="btn primary" data-act="snack">Snack +1 Lv<br><small>${snackCost(c)} coins</small></button>
+      <button class="btn primary" data-act="snack" ${c.lvl >= MAX_LEVEL ? 'disabled' : ''}>${c.lvl >= MAX_LEVEL ? 'Max level' : `Snack +1 Lv<br><small>${snackCost(c)} coins</small>`}</button>
     </div>
     <div class="btn-row">
       <button class="btn" data-act="merge" ${twins.length ? '' : 'disabled'}>Merge<br><small>${twins.length ? `${twins.length} other ${esc(sp.names[0])}` : `Needs another ${esc(sp.names[0])}`}</small></button>
@@ -680,10 +761,17 @@ function showCreature(uid, confirmRelease = false) {
     const cost = snackCost(c);
     if (S.coins < cost) { toast(`You need ${cost} coins for a snack.`); return; }
     S.coins -= cost;
-    const old = c.lvl; c.lvl++; announceGrowth(c, old);
-    save(); updateHud(); showCreature(uid); refreshPanel();
+    if (c.lvl >= MAX_LEVEL) return;
+    setLevel(c, c.lvl + 1);
+    save(); updateHud(); refreshPanel();
+    if (learnQueue.length) { processLearnQueue().then(() => showCreature(uid)); } else showCreature(uid);
   });
   on('merge', () => { if (twins.length) pickMergeDonor(c, twins); });
+  sheet.querySelectorAll('[data-teach]').forEach((b) => (b.onclick = () => {
+    const k = b.dataset.teach;
+    if (c.skills.length < MAX_SKILLS) { c.skills.push(k); save(); showCreature(uid); refreshPanel(); }
+    else promptLearn(c, k, true);
+  }));
   on('reroll', () => {
     if (S.dust < REROLL_COST) { toast(`You need ${REROLL_COST} stardust.`); return; }
     S.dust -= REROLL_COST;
@@ -713,7 +801,7 @@ function showCreature(uid, confirmRelease = false) {
 // gain a level, and pass on one trait or its ability.
 function pickMergeDonor(c, twins) {
   const sheet = openModal(`<h2>Merge into ${esc(nameOf(c))}</h2>
-    <p class="hint">Pick who to merge in. ${esc(nameOf(c))} keeps the better stats of both, gains a level, and can learn one trait or ability from it.</p>
+    <p class="hint">Pick who to merge in. ${esc(nameOf(c))} keeps the better stats of both, gains a level, and can learn one trait or skill from it.</p>
     <div class="grid" style="margin-top:10px">${twins.map(monCard).join('')}</div>
     <button class="btn block" data-act="back" style="margin-top:12px">Back</button>`);
   sheet.querySelector('[data-act=back]').onclick = () => showCreature(c.uid);
@@ -724,7 +812,7 @@ function pickMergeGift(c, donor) {
   const sp = SPECIES_BY_ID[c.id];
   const gifts = donor.traits.filter((k) => !c.traits.includes(k) && !EXCLUSIVE_TRAITS.some((g) => g.includes(k) && g.some((o) => o !== k && c.traits.includes(o))))
     .map((k) => ({ key: 't:' + k, label: `Learn trait: ${TRAITS[k].name}`, desc: TRAITS[k].desc }));
-  if (abilityKey(donor) !== abilityKey(c)) gifts.push({ key: 'a', label: `Learn ability: ${ABILITY[abilityKey(donor)].name}`, desc: abilityText(abilityKey(donor), c.lvl) });
+  for (const k of donor.skills) if (!c.skills.includes(k)) gifts.push({ key: 's:' + k, label: `Learn skill: ${ABILITY[k].name}`, desc: abilityText(k, c.lvl) });
   gifts.push({ key: 'none', label: 'Just merge', desc: 'Keep traits and ability as they are.' });
   const sheet = openModal(`<h2>What should ${esc(nameOf(c))} learn?</h2>
     <p class="hint">${esc(nameOf(donor))} (Lv ${donor.lvl}) will merge in.${c.traits.length >= 3 ? ' Learning a trait replaces one of the current three.' : ''}</p>
@@ -752,18 +840,19 @@ function pickTraitToReplace(c, donor, newTrait) {
 
 function doMerge(c, donor, gift) {
   if (gift.startsWith('t:')) c.traits.push(gift.slice(2));
-  if (gift === 'a') c.ab = donor.ab;
+  if (gift.startsWith('s:')) {
+    const k = gift.slice(2);
+    if (c.skills.length < MAX_SKILLS) c.skills.push(k); else learnQueue.push({ uid: c.uid, key: k });
+  }
   c.roll = { a: Math.max(c.roll.a, donor.roll.a), h: Math.max(c.roll.h, donor.roll.h) };
   c.shiny = c.shiny || donor.shiny;
-  const old = c.lvl;
-  c.lvl = Math.max(c.lvl, donor.lvl) + 1;
-  announceGrowth(c, old);
+  setLevel(c, Math.max(c.lvl, donor.lvl) + 1);
   S.roster = S.roster.filter((x) => x.uid !== donor.uid);
   const di = S.team.indexOf(donor.uid);
   if (di >= 0) S.team[di] = S.team.includes(c.uid) ? null : c.uid;
   save();
   const sheet = openModal(revealHTML(c, 'Merged!', '') + '<button class="btn primary block" data-close style="margin-top:12px">Great!</button>');
-  sheet.querySelector('[data-close]').onclick = () => { closeModal(); refreshPanel(); };
+  sheet.querySelector('[data-close]').onclick = () => { closeModal(); refreshPanel(); processLearnQueue(); };
   refreshPanel();
 }
 
@@ -871,7 +960,7 @@ function genRivals() {
 
 // Friend codes carry each creature's level, stars, traits, ability and shiny.
 function encodeTeam() {
-  const t = teamEntries().filter(Boolean).map((c) => [c.id, c.lvl, Math.round(c.roll.a * 100), Math.round(c.roll.h * 100), c.traits.join('.'), c.ab, c.shiny ? 1 : 0]);
+  const t = teamEntries().filter(Boolean).map((c) => [c.id, c.lvl, Math.round(c.roll.a * 100), Math.round(c.roll.h * 100), c.traits.join('.'), c.skills.join('.'), c.shiny ? 1 : 0]);
   const bytes = new TextEncoder().encode(JSON.stringify({ n: S.name || 'Tamer', t }));
   return 'CV3-' + btoa(String.fromCharCode(...bytes));
 }
@@ -888,7 +977,9 @@ function decodeTeam(code) {
       const lvl = Math.floor(Number(lvlRaw));
       if (!SPECIES_BY_ID[id] || !(lvl >= 1 && lvl <= 200)) throw new Error('bad');
       const traits = String(tr).split('.').filter((k) => TRAITS[k]).slice(0, 3);
-      return { id, lvl, xp: 0, roll: { a: pct(a), h: pct(hh) }, traits, ab: Math.max(0, Math.min(2, Number(ab) || 0)), shiny: !!sh };
+      const lv = Math.min(MAX_LEVEL, lvl);
+      const skills = typeof ab === 'string' ? ab.split('.').filter((k) => ABILITY[k]).slice(0, MAX_SKILLS) : defaultSkills(id, lv, Math.max(0, Math.min(1, Number(ab) || 0)));
+      return { id, lvl: lv, xp: 0, roll: { a: pct(a), h: pct(hh) }, traits, ab: 0, skills: skills.length ? skills : defaultSkills(id, lv), shiny: !!sh };
     });
     if (!team.length) return null;
     return { name: String(d.n || 'Friend').slice(0, 20), team };
@@ -939,8 +1030,9 @@ async function arenaBattle({ rival, friend }) {
     S.rivals = genRivals();
   } else if (result === 'win') { S.coins += 20; reward = '+20 coins'; }
   save(); updateHud();
+  const xpRows = awardKills(lastReport, 0.5);
   const title = result === 'win' ? `<div class="result-banner win">You beat ${esc(foe)}!</div>` : result === 'lose' ? `<div class="result-banner lose">${esc(foe)} won this time</div>` : '<div class="result-banner">A tie!</div>';
-  await battleFooter(`${title}${reward ? `<p class="hint center">${reward}</p>` : ''}`, [{ key: 'ok', label: 'Back to Arena', cls: 'primary' }]);
+  await battleFooter(`${title}${reward ? `<p class="hint center">${reward}</p>` : ''}${xpRows}`, [{ key: 'ok', label: 'Back to Arena', cls: 'primary' }]);
   closeBattle();
   refreshPanel();
 }
@@ -962,7 +1054,7 @@ function showIntro() {
   sheet.querySelectorAll('[data-pick]').forEach((el) => (el.onclick = () => {
     pick = el.dataset.pick;
     sheet.querySelectorAll('[data-pick]').forEach((x) => x.classList.toggle('picked', x === el));
-    $('#pick-info').innerHTML = `Comes with one of these abilities: ${SPECIES_BY_ID[pick].abilities.map((k) => `<b>${ABILITY[k].name}</b> (${abilityText(k, 5)})`).join(' or ')}`;
+    $('#pick-info').innerHTML = `Starts with <b>${SPECIES_BY_ID[pick].abilities.map((k) => ABILITY[k].name).join('</b> or <b>')}</b>, and learns up to 4 skills as it levels (max Lv ${MAX_LEVEL}).`;
     $('#btn-begin').disabled = false;
   }));
   $('#btn-begin').onclick = async () => {

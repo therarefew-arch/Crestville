@@ -22,6 +22,11 @@ function creatureStats(c) {
   return { atk: Math.max(1, Math.round(atk)), hp: Math.max(1, Math.round(hp)) };
 }
 
+// Skill power grows with evolution and every 30 levels.
+function tierOf(lvl) {
+  return evoStage(lvl) + 1 + Math.floor(lvl / 30);
+}
+
 function stars(roll) {
   return 1 + Math.round(((roll.a + roll.h) / 2) * 4);
 }
@@ -78,12 +83,49 @@ const ABILITY = {
                 run: (c, u, t) => c.buff(u, 2 * t, 0) },
 };
 
-function abilityKey(c) {
-  const list = SPECIES_BY_ID[c.id].abilities;
-  return list[Math.min(c.ab || 0, list.length - 1)];
+const MAX_LEVEL = 100;
+const MAX_SKILLS = 4;
+const LEARN_LEVELS = [6, 14, 24, 36, 50, 65, 80, 95];
+const SKILL_POOLS = {
+  tank: ['fluff', 'bounce', 'toughskin', 'armor', 'splashback', 'thorns', 'sharefront', 'warmup'],
+  striker: ['whetstone', 'sparktoss', 'snipeback', 'ripple', 'tailbolt', 'avenge', 'warmup', 'prickly'],
+  support: ['bless', 'sharefront', 'snack', 'lastdrop', 'rally', 'watchful', 'bounce', 'spore'],
+  trickster: ['dust', 'tailbolt', 'snipeback', 'chainzap', 'wickpop', 'thorns', 'spore', 'ripple'],
+  fire: ['sparktoss', 'warmup'], water: ['ripple', 'splashback'], leaf: ['bless', 'spore', 'prickly'],
+  spark: ['chainzap', 'tailbolt'], stone: ['toughskin', 'thorns'], shade: ['dust', 'avenge', 'snipeback'], gear: ['armor', 'whetstone'],
+};
+
+// Each species learns the same skills at the same levels: [[level, skill], ...]
+const LEARNSETS = {};
+function learnset(id) {
+  if (LEARNSETS[id]) return LEARNSETS[id];
+  const sp = SPECIES_BY_ID[id];
+  let seed = [...id].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 4294967296);
+  const pool = [...new Set([...SKILL_POOLS[sp.el], ...SKILL_POOLS[sp.role]])].filter((k) => !sp.abilities.includes(k));
+  for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  const order = [...sp.abilities.slice(1), ...pool];
+  LEARNSETS[id] = LEARN_LEVELS.slice(0, order.length).map((lvl, i) => [lvl, order[i]]);
+  return LEARNSETS[id];
+}
+// A creature's own learnset: whichever signature skill it didn't start with comes first.
+function learnsetFor(id, ab = 0) {
+  const sp = SPECIES_BY_ID[id];
+  if (ab !== 1 || sp.abilities.length < 2) return learnset(id);
+  return learnset(id).map(([l, k]) => [l, k === sp.abilities[1] ? sp.abilities[0] : k]);
+}
+// Starting skill (rolled) plus everything learned by this level, keeping the newest 4.
+function defaultSkills(id, lvl, ab = 0) {
+  const sp = SPECIES_BY_ID[id];
+  const first = sp.abilities[Math.min(ab, sp.abilities.length - 1)];
+  const learned = learnsetFor(id, ab).filter(([l, k]) => l <= lvl && k !== first).map(([, k]) => k);
+  return [first, ...learned].slice(-MAX_SKILLS);
+}
+function skillsOf(c) {
+  return c.skills && c.skills.length ? c.skills : defaultSkills(c.id, c.lvl, c.ab || 0);
 }
 function abilityText(key, lvl) {
-  return ABILITY[key].text(evoStage(lvl) + 1);
+  return ABILITY[key].text(tierOf(lvl));
 }
 
 // Element team bonus: 3+ of one element gives each of them +1/+1, 5 gives +2/+2.
@@ -97,16 +139,16 @@ function elementBonus(team) {
 
 // team: array of creatures (nulls skipped), index 0 = front.
 // ui: optional object of async hooks used to animate the battle.
-async function runBattle(allyTeam, enemyTeam, ui = null) {
+async function runBattle(allyTeam, enemyTeam, ui = null, report = null) {
   let n = 0;
   const make = (c, side, bonus) => {
     const st = creatureStats(c);
     const sp = SPECIES_BY_ID[c.id];
     const b = bonus[sp.el] || 0;
     return {
-      key: side + n++, id: c.id, sp, lvl: c.lvl, t: evoStage(c.lvl) + 1, shiny: !!c.shiny,
-      atk: st.atk + b, hp: st.hp + b, side, out: false,
-      ab: abilityKey(c), traits: c.traits || [], opened: false, blocked: false, stood: false,
+      key: side + n++, id: c.id, sp, lvl: c.lvl, t: tierOf(c.lvl), stage: evoStage(c.lvl), shiny: !!c.shiny,
+      atk: st.atk + b, hp: st.hp + b, side, out: false, src: c,
+      skills: skillsOf(c), traits: c.traits || [], opened: false, blocked: false, stood: false,
     };
   };
   const build = (team, side) => { const list = team.filter(Boolean); const bonus = elementBonus(list); return list.map((c) => make(c, side, bonus)); };
@@ -114,11 +156,17 @@ async function runBattle(allyTeam, enemyTeam, ui = null) {
   const call = async (hook, ...args) => { if (ui && ui[hook]) await ui[hook](...args); };
   const foesOf = (u) => B[u.side === 'ally' ? 'enemy' : 'ally'];
   const has = (u, t) => u.traits.includes(t);
+  const knows = (u, k) => u.skills.includes(k);
+  const kills = [];
 
-  async function fire(u, extra = {}) {
-    const ab = ABILITY[u.ab];
-    await call('trigger', u, ab.name);
-    await ab.run(ctx, u, u.t, { foes: foesOf(u), allies: B[u.side], extra });
+  // Fire every skill this creature holds that matches the trigger.
+  async function fire(u, trig, extra = {}) {
+    for (const key of u.skills) {
+      const ab = ABILITY[key];
+      if (ab.trig !== trig || (trig !== 'faint' && (u.out || u.hp <= 0))) continue;
+      await call('trigger', u, ab.name);
+      await ab.run(ctx, u, u.t, { foes: foesOf(u), allies: B[u.side], extra });
+    }
   }
   async function trait(u, key, fn) {
     await call('trigger', u, TRAITS[key].name);
@@ -128,17 +176,19 @@ async function runBattle(allyTeam, enemyTeam, ui = null) {
   const ctx = {
     async damage(src, target, amount, tag = '') {
       if (!target || target.out || target.hp <= 0) return;
-      if (target.ab === 'armor' && !target.blocked) {
+      if (knows(target, 'armor') && !target.blocked) {
         target.blocked = true;
         await call('trigger', target, 'Blocked!');
         return;
       }
-      if (target.ab === 'toughskin') amount -= target.t;
+      if (knows(target, 'toughskin')) amount -= target.t;
       if (has(target, 'thickfur')) amount -= 1;
       amount = Math.max(1, amount);
+      const wasUp = target.hp > 0;
       target.hp -= amount;
+      if (wasUp && target.hp <= 0 && src && src.side !== target.side) kills.push({ killer: src, victim: target });
       await call('damage', target, amount, tag);
-      if (target.hp > 0 && ABILITY[target.ab].trig === 'hurt') await fire(target, { src });
+      if (target.hp > 0) await fire(target, 'hurt', { src });
     },
     async buff(u, atk, hp) {
       if (!u || u.out || u.hp <= 0) return;
@@ -158,10 +208,10 @@ async function runBattle(allyTeam, enemyTeam, ui = null) {
         const idx = team.indexOf(u);
         team.splice(idx, 1);
         await call('faint', u);
-        if (ABILITY[u.ab].trig === 'faint') await fire(u, { idx });
+        await fire(u, 'faint', { idx });
         for (const a of [...team]) {
           if (a.hp <= 0) continue;
-          if (ABILITY[a.ab].trig === 'allyFaint') await fire(a);
+          await fire(a, 'allyFaint');
           if (has(a, 'vengeful')) await trait(a, 'vengeful', () => ctx.buff(a, 1, 0));
         }
         if (team.length === 1 && has(team[0], 'laststand') && !team[0].stood && team[0].hp > 0) {
@@ -187,7 +237,7 @@ async function runBattle(allyTeam, enemyTeam, ui = null) {
   for (let i = 0; i < 5; i++) for (const side of ['ally', 'enemy']) if (B[side][i]) order.push(B[side][i]);
   for (const u of order) {
     if (u.out || u.hp <= 0) continue;
-    if (ABILITY[u.ab].trig === 'start') await fire(u);
+    await fire(u, 'start');
     if (has(u, 'quick')) await trait(u, 'quick', () => ctx.damage(u, foesOf(u)[0], 2));
     if (has(u, 'guardian')) await trait(u, 'guardian', () => ctx.buff(B[u.side][B[u.side].indexOf(u) + 1], 0, 3));
   }
@@ -202,15 +252,16 @@ async function runBattle(allyTeam, enemyTeam, ui = null) {
     await ctx.damage(e, a, toA, tagA);
     for (const u of [a, e]) {
       if (u.hp <= 0) continue;
-      if (ABILITY[u.ab].trig === 'attack') await fire(u);
+      await fire(u, 'attack');
       if (has(u, 'sapling') && u.hp > 0) await trait(u, 'sapling', () => ctx.buff(u, 0, 1));
     }
     await resolveFaints();
   }
 
   const result = B.ally.length && !B.enemy.length ? 'win' : !B.ally.length && B.enemy.length ? 'lose' : 'draw';
+  if (report) report.kills = kills.map((k) => ({ killer: k.killer.src, killerSide: k.killer.side, victimLvl: k.victim.lvl }));
   await call('end', result);
   return result;
 }
 
-if (typeof module !== 'undefined') module.exports = { runBattle, creatureStats, evoStage, abilityText, ABILITY };
+if (typeof module !== 'undefined') module.exports = { runBattle, creatureStats, evoStage, abilityText, ABILITY, learnset, defaultSkills };

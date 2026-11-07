@@ -1,6 +1,13 @@
 # Crestville — Game Concept (v2)
 
-> **Current build (v0.3):** walk around Crestville, meet wild creatures in tall grass, and
+> **Current build (v0.4):** creatures level to 100 and earn XP from knockouts (the
+> creature that lands it gets full XP, teammates get 20%; trainers give double). Each
+> species learns skills at set levels (6, 14, 24, 36, 50, 65, 80, 95). A creature holds
+> up to 4 skills, and all 4 work in battle. When a 5th unlocks you choose one to forget
+> or skip it; unlocked skills can be swapped back in from its page. Skill power grows
+> with evolution and every 30 levels.
+>
+> **v0.3:** walk around Crestville, meet wild creatures in tall grass, and
 > fight lineup battles (front fights front, next steps up). 60 creatures across 5 regions.
 > Every creature is one of a kind: random stars (stat quality), 1-3 random traits, one of
 > its species' abilities, and a rare shiny color. Scout the enemy lineup and reorder before
