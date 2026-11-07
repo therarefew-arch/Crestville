@@ -1053,7 +1053,8 @@ function showIntro() {
     }).join('')}</div>
     <p class="hint" id="pick-info" style="min-height:40px">Tap a creature to meet it.</p>
     <input type="text" id="tamer-name" maxlength="16" placeholder="Your tamer name" autocomplete="off">
-    <button class="btn primary block" id="btn-begin" style="margin-top:12px" disabled>Begin</button>`);
+    <button class="btn primary block" id="btn-begin" style="margin-top:12px" disabled>Begin</button>
+    <p class="hint center" style="font-size:12px;margin-top:8px">Crestville ${VERSION}</p>`);
   sheet.querySelectorAll('[data-pick]').forEach((el) => (el.onclick = () => {
     pick = el.dataset.pick;
     sheet.querySelectorAll('[data-pick]').forEach((x) => x.classList.toggle('picked', x === el));
@@ -1131,6 +1132,7 @@ function inputTick() {
 // ---------- start ----------
 function init() {
   document.querySelectorAll('[data-icon]').forEach((el) => (el.innerHTML = ICONS[el.dataset.icon]));
+  $('#version').textContent = VERSION;
   setupInput();
   const map = MAPS[S.map] ? S.map : 'town';
   worldInit($('#world'), { onStep, onDoor: (b) => enterBuilding(b), leadCreature });

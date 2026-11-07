@@ -84,7 +84,8 @@ p { margin: 4px 0; }
 @keyframes nudge { 50% { transform: translateY(2px); } }
 
 /* Controls */
-.padbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 18px 12px; }
+.padbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 18px 12px; position: relative; }
+.version { position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%); font-size: 11px; color: var(--ink-soft); opacity: .8; font-variant-numeric: tabular-nums; pointer-events: none; }
 .dpad { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 46px); gap: 3px; }
 .dpad button {
   border: 2.5px solid var(--ink); background: var(--card); border-radius: 14px; box-shadow: 0 3px 0 var(--ink);
