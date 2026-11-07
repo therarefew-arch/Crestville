@@ -1,8 +1,9 @@
 // Checks map/creature data and rough battle balance. Run: node tools/balance.js
 const fs = require('fs'), vm = require('vm');
 const ctx = { console, Math };
+ctx.window = ctx;
 vm.createContext(ctx);
-for (const f of ['js/data.js', 'js/battle.js', 'js/maps.js']) vm.runInContext(fs.readFileSync(f, 'utf8'), ctx);
+for (const f of ['js/data.js', 'js/battle.js', 'js/maps.js', 'js/towns.js']) vm.runInContext(fs.readFileSync(f, 'utf8'), ctx);
 const run = (code) => vm.runInContext(code, ctx);
 const maps = run('MAPS'), SPECIES = run('SPECIES'), ABILITY = run('ABILITY');
 
@@ -16,6 +17,27 @@ for (const [id, m] of Object.entries(maps)) {
   for (const e of m.exits) if (blocked.includes(maps[e.to].tiles[e.ty][e.tx])) console.log(`!! ${id} exit lands on blocked tile`);
   for (const n of m.npcs) for (const [sid] of (n.trainer ? n.trainer.team : [])) if (!SPECIES.find((s) => s.id === sid)) console.log(`!! unknown species ${sid}`);
 }
+// Every door, exit, NPC and patch of grass must be reachable from the map's entry points.
+for (const [id, m] of Object.entries(maps)) {
+  const at = (x, y) => (m.tiles[y] || '')[x];
+  const npcAt = (x, y) => m.npcs.some((n) => n.x === x && n.y === y);
+  const sign = (x, y) => m.signs[`${x},${y}`] != null;
+  const ok = (x, y) => at(x, y) !== undefined && !(blocked + '^').includes(at(x, y)) && !sign(x, y) && !npcAt(x, y);
+  const starts = [...(m.start ? [m.start] : []), ...m.exits.map((e) => [e.x, e.y])];
+  const seen = new Set(), q = starts.filter(([x, y]) => ok(x, y));
+  q.forEach(([x, y]) => seen.add(x + ',' + y));
+  while (q.length) { const [x, y] = q.shift(); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const k = (x + dx) + ',' + (y + dy); if (!seen.has(k) && ok(x + dx, y + dy)) { seen.add(k); q.push([x + dx, y + dy]); } } }
+  const near = (x, y) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => seen.has((x + dx) + ',' + (y + dy)));
+  for (const b of m.buildings) if (!near(b.door[0], b.door[1])) console.log(`!! ${id}: door ${b.label} unreachable`);
+  for (const n of m.npcs) if (!near(n.x, n.y)) console.log(`!! ${id}: npc ${n.id} unreachable`);
+  for (const e of m.exits) if (!seen.has(e.x + ',' + e.y)) console.log(`!! ${id}: exit to ${e.to} unreachable`);
+  for (const e of m.exits) { const back = maps[e.to].exits.some((b) => b.to === id); if (!back) console.log(`!! ${id}: exit to ${e.to} has no way back`); }
+  let grass = 0, lost = 0;
+  m.tiles.forEach((r, y) => [...r].forEach((c, x) => { if (c === ',') { grass++; if (!seen.has(x + ',' + y) && !npcAt(x, y)) lost++; } }));
+  if (lost) console.log(`!! ${id}: ${lost}/${grass} grass tiles unreachable`);
+}
+console.log(`maps ok: ${Object.keys(maps).length} maps`);
+
 const ids = new Set();
 for (const s of SPECIES) {
   if (ids.has(s.id)) console.log('!! duplicate', s.id);

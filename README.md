@@ -24,7 +24,9 @@ On a phone you can "Add to Home Screen" to play it like an app.
 - `index.html`, `css/style.css` – page and cozy styling
 - `js/data.js` – creatures, elements, roles, regions
 - `js/art.js` – hand-drawn style creature and egg art (SVG)
-- `js/maps.js` – town, route and grove maps, NPCs and trainers
+- `js/maps.js` – Crestville, Meadow Route and Hollow Grove maps
+- `js/towns.js` – town themes and the 10 towns beyond Crestville
+- `js/audio.js` – generated background music
 - `js/world.js` – walkable overworld (canvas)
 - `js/battle.js` – lineup battle engine and creature abilities
 - `js/main.js` – game state, screens, saving

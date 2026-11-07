@@ -2,6 +2,12 @@
 
 > **Current build:** see the version in the game and CHANGELOG.md.
 >
+> **World (v0.0.03):** 11 towns in a chain (Crestville, Willowmere, Sunpetal Fields,
+> Emberforge, Saltbreeze Harbor, Duskmire, Lanternhollow, Sandglass Oasis, Cogsworth,
+> Frostpeak, Starfall Summit), each with its own theme, ambience, music, wild creatures by
+> element, two trainers and a Champion who gives one of 11 crests. Roads open crest by
+> crest; Travel Posts fast-travel between visited towns. Joy-Con controls with a thumbstick.
+>
 > **Skills and levels:** creatures level to 100 and earn XP from knockouts (the
 > creature that lands it gets full XP, teammates get 20%; trainers give double). Each
 > species learns skills at set levels (6, 14, 24, 36, 50, 65, 80, 95). A creature holds

@@ -6,7 +6,7 @@ function freshState() {
   return {
     name: '', coins: 60, berries: 2, crests: 0,
     roster: [], team: [null, null, null, null, null], nextUid: 1,
-    eggCost: 100, trophies: 0, rivals: null, speed: 1, dust: 0, pity: 0, seen: [],
+    eggCost: 100, trophies: 0, rivals: null, speed: 1, dust: 0, pity: 0, seen: [], visited: ['town'], lastTown: 'town', music: true,
     map: 'town', x: MAPS.town.start[0], y: MAPS.town.start[1], dir: 'down', beaten: {},
   };
 }
@@ -28,6 +28,7 @@ function migrate(st) {
     if (c.shiny == null) c.shiny = false;
   }
   st.roster = st.roster.filter((c) => SPECIES_BY_ID[c.id]);
+  if (!st.visited.includes('town')) st.visited.unshift('town');
   st.team = st.team.map((u) => (st.roster.some((c) => c.uid === u) ? u : null));
   return st;
 }
@@ -59,7 +60,7 @@ function restartClass(el, cls, ms) {
   el['_t' + cls] = setTimeout(() => el.classList.remove(cls), ms);
 }
 function crestSVG(r, earned) {
-  const fill = earned ? REGIONS[r].hill2 : '#efe2c9';
+  const fill = earned ? TOWN_CRESTS[r].color : '#efe2c9';
   const star = earned ? '<path d="M12 7 l1.5 3 3.3 .5 -2.4 2.3 .6 3.3 -3 -1.6 -3 1.6 .6 -3.3 -2.4 -2.3 3.3 -.5 Z" fill="#fffaf0"/>' : '';
   return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 L20 5 V11 C20 16 16.5 20 12 22 C7.5 20 4 16 4 11 V5 Z" fill="${fill}" stroke="#5b4636" stroke-width="1.8" stroke-linejoin="round"/>${star}</svg>`;
 }
@@ -241,7 +242,7 @@ function revealHTML(c, title, note) {
 function updateHud() {
   $('#coins').textContent = S.coins.toLocaleString();
   $('#berries').textContent = S.berries;
-  $('#crests').textContent = `${S.crests}/5`;
+  $('#crests').textContent = `${S.crests}/${TOWN_CRESTS.length}`;
   $('#map-name').textContent = World.map ? World.map.name : 'Crestville';
 }
 function syncPause() {
@@ -420,7 +421,10 @@ async function playBattle(title, enemy, { canRun = false } = {}) {
   BUI.skip = false;
   $('#b-title').textContent = title;
   $('#b-speed').textContent = S.speed + '×';
+  const lt = (World.th || THEMES.meadow).lane;
+  $('#lane').style.background = `linear-gradient(${lt[0]} 0%, ${lt[1]} calc(var(--mid) - 24px), ${lt[2]} calc(var(--mid) + 24px), ${lt[3]} 100%)`;
   $('#battle').classList.remove('hidden');
+  musicPlay('battle');
   await nextFrame();
   const ui = makeBattleUI();
   const choice = await scout(ui, enemy, canRun);
@@ -441,6 +445,7 @@ function battleFooter(html, buttons) {
 }
 function closeBattle() {
   $('#battle').classList.add('hidden');
+  musicPlay((World.map && World.map.music) || 'meadow');
   busy = false; syncPause();
   if (learnQueue.length) setTimeout(processLearnQueue, 50);
 }
@@ -457,8 +462,15 @@ async function flashIn() {
   f.classList.remove('go');
 }
 
-function pickWild(regions) {
-  const list = SPECIES.filter((s) => regions.includes(s.region));
+// regions: list of region numbers, or a map's wild settings ({ regions } or { els }).
+function pickWild(regions, faraway = false) {
+  let test;
+  if (Array.isArray(regions)) test = (s) => regions.includes(s.region);
+  else if (regions.els) test = (s) => regions.els.includes(s.el);
+  else test = (s) => regions.regions.includes(s.region);
+  if (!Array.isArray(regions) && !regions.els && !regions.regions) test = () => true;
+  const list = SPECIES.filter((s) => (faraway ? !test(s) : test(s)));
+  return weightedPick(list.length ? list : SPECIES, (s) => RARITY[s.rarity].wild);
   return weightedPick(list, (s) => RARITY[s.rarity].wild);
 }
 
@@ -470,7 +482,7 @@ async function wildEncounter() {
   const visitor = Math.random() < 0.05;
   const enemy = [];
   for (let i = 0; i < n; i++) {
-    const sp = visitor && i === 0 ? pickWild([0, 1, 2, 3, 4].filter((r) => !w.regions.includes(r))) : pickWild(w.regions);
+    const sp = pickWild(w, visitor && i === 0);
     enemy.push(rollCreature(sp.id, randInt(w.min, w.max)));
   }
   S.seen = [...new Set([...(S.seen || []), ...enemy.map((e) => e.id)])];
@@ -535,7 +547,7 @@ async function trainerBattle(npc) {
   await say(npc.name, tr.before);
   busy = true; syncPause();
   await flashIn();
-  const enemy = tr.team.map(([id, lvl]) => plainCreature(id, lvl));
+  const enemy = tr.team.map(([id, lvl]) => { const c = plainCreature(id, lvl); if (tr.quality) c.roll = { a: tr.quality, h: tr.quality }; return c; });
   const result = await playBattle(npc.name, enemy);
   stepsSinceBattle = 0;
   if (result === 'win') {
@@ -559,17 +571,18 @@ async function trainerBattle(npc) {
 async function goHome() {
   busy = true; syncPause();
   await flashIn();
-  const [x, y] = MAPS.town.start;
-  enterMap('town', x, y, 'down');
+  const id = MAPS[S.lastTown] ? S.lastTown : 'town';
+  const [x, y] = MAPS[id].start;
+  enterMap(id, x, y, 'down');
   busy = false; syncPause();
-  await say('', 'You rested at home. Your team feels cozy and refreshed.');
+  await say('', id === 'town' ? 'You rested at home. Your team feels cozy and refreshed.' : `You rested in ${MAPS[id].name}. Your team feels cozy and refreshed.`);
 }
 
 function showCrest(r) {
   const sheet = openModal(`<div class="center">
-    <h2>You earned the ${REGIONS[r].crest}!</h2>
+    <h2>You earned the ${TOWN_CRESTS[r].name}!</h2>
     <div class="crest-big">${crestSVG(r, true)}</div>
-    <p class="hint">Creatures from ${REGIONS[Math.min(4, r + 1)].name} will now hatch from Meadow Eggs.</p>
+    <p class="hint">${S.crests}/${TOWN_CRESTS.length} crests. ${r < TOWN_CRESTS.length - 1 ? 'The road to the next town is open, and Meadow Eggs may hold new kinds of creatures.' : 'You collected every crest. Crestville will tell stories about you!'}</p>
     <button class="btn primary block" data-close style="margin-top:14px">Hooray!</button></div>`);
   sheet.querySelector('[data-close]').onclick = closeModal;
 }
@@ -578,6 +591,11 @@ function showCrest(r) {
 function enterMap(id, x, y, dir) {
   worldLoad(id, x, y, dir);
   S.map = id; S.x = x; S.y = y;
+  if (World.map.town) {
+    S.lastTown = id;
+    if (!S.visited.includes(id)) S.visited.push(id);
+  }
+  musicPlay(World.map.music || 'meadow');
   save(); updateHud();
 }
 
@@ -586,9 +604,20 @@ async function onStep(x, y) {
   stepsSinceBattle++;
   const exit = World.map.exits.find((e) => e.x === x && e.y === y);
   if (exit) {
+    if (exit.need && S.crests < exit.need) {
+      // Step back and explain which crest opens the road.
+      const p = World.player, [dx, dy] = DIRS[p.dir];
+      p.x -= dx; p.y -= dy; p.fx = p.x; p.fy = p.y; p.t = 1;
+      p.dir = Object.keys(DIRS).find((d) => DIRS[d][0] === -dx && DIRS[d][1] === -dy);
+      S.x = p.x; S.y = p.y;
+      await say('Gatekeeper', `The road ahead is wild. Earn the ${TOWN_CRESTS[exit.need - 1].name} first.`);
+      return;
+    }
     busy = true; syncPause();
+    await flashIn();
     enterMap(exit.to, exit.tx, exit.ty, World.player.dir);
     busy = false; syncPause();
+    if (World.map.town && MAPS[exit.to].town) toast(`Welcome to <b>${esc(World.map.name)}</b>`);
     return;
   }
   save();
@@ -620,6 +649,7 @@ async function checkSight() {
 }
 
 async function interact() {
+  musicUnlock();
   if (dialogOpen) { advanceDialog(); return; }
   if (World.paused || World.player.moving) return;
   const [x, y] = facingTile();
@@ -627,6 +657,7 @@ async function interact() {
   if (npc) {
     const p = World.player;
     npc.dir = Object.keys(DIRS).find((d) => DIRS[d][0] === p.x - npc.x && DIRS[d][1] === p.y - npc.y) || npc.dir;
+    if (npc.action === 'travel') { await say(npc.name, 'Hop on! Where would you like to go?'); return openPanel('Travel', renderTravel); }
     if (npc.trainer && !S.beaten[npc.id]) return trainerBattle(npc);
     return say(npc.name, npc.trainer ? npc.trainer.after : npc.lines);
   }
@@ -640,6 +671,31 @@ function enterBuilding(b) {
   if (b.action === 'hatchery') openPanel('Hatchery', renderHatchery);
   if (b.action === 'market') openPanel('Market', renderMarket);
   if (b.action === 'arena') openPanel('Arena', renderArena);
+  if (b.action === 'travel') openPanel('Travel', renderTravel);
+}
+
+// ---------- travel ----------
+const TOWN_ORDER = ['town', ...TOWN_DEFS.map((d) => d.id)];
+function renderTravel(body) {
+  body.innerHTML = `<p class="hint">Hop on a cozy coach to any town you've visited.</p>
+    <div class="travel-list">${TOWN_ORDER.map((id, i) => {
+      const m = MAPS[id], seen = S.visited.includes(id), here = World.mapId === id;
+      const t = THEMES[m.theme || 'meadow'];
+      return `<div class="travel-row ${seen ? '' : 'locked'}" style="--c1:${t.grass};--c2:${t.canopy[0]}">
+        <div class="tr-badge">${crestSVG(i, S.crests > i)}</div>
+        <div class="tr-name"><b>${seen ? esc(m.name) : '???'}</b><small>${seen ? (i === 0 ? 'Home town' : `Wild Lv ${m.wild.min}-${m.wild.max}`) : 'Not visited yet'}</small></div>
+        ${here ? '<span class="hint">You are here</span>' : seen ? `<button class="btn primary small" data-go="${id}">Travel</button>` : ''}
+      </div>`;
+    }).join('')}</div>`;
+  body.querySelectorAll('[data-go]').forEach((b) => (b.onclick = async () => {
+    closePanel();
+    busy = true; syncPause();
+    await flashIn();
+    const id = b.dataset.go, [x, y] = MAPS[id].start;
+    enterMap(id, x, y, 'down');
+    busy = false; syncPause();
+    toast(`Welcome to <b>${esc(MAPS[id].name)}</b>`);
+  }));
 }
 
 // ---------- team ----------
@@ -866,7 +922,7 @@ const MYSTERY_COST = 350;
 function renderHatchery(body) {
   const owned = new Set(S.roster.map((c) => c.id));
   const seen = new Set([...(S.seen || []), ...owned]);
-  const regionMax = Math.max(1, Math.min(4, S.crests + 1));
+  const regionMax = eggRegionMax();
   body.innerHTML = `
     <div class="egg-pair">
       <div class="card hatch-card">
@@ -892,8 +948,10 @@ function renderHatchery(body) {
   body.querySelectorAll('[data-egg]').forEach((b) => (b.onclick = () => hatch(b.dataset.egg)));
 }
 
+function eggRegionMax() { return Math.min(4, 1 + Math.floor(S.crests / 2)); }
+
 function rollEgg(kind) {
-  const regionMax = Math.max(1, Math.min(4, S.crests + 1));
+  const regionMax = eggRegionMax();
   const list = kind === 'mystery' ? SPECIES : SPECIES.filter((s) => s.region <= regionMax);
   const w = kind === 'mystery' ? { common: 50, rare: 38, epic: 12 } : { common: 70, rare: 25, epic: 5 };
   const rarity = weightedPick(Object.keys(w), (k) => w[k]);
@@ -951,7 +1009,7 @@ function renderMarket(body) {
 function teamPower() { return Math.max(1, Math.round(avgLvl(teamEntries()))); }
 function genRivals() {
   const p = teamPower();
-  const regions = [0, 1, 2, 3, 4].filter((r) => r <= Math.min(4, S.crests + 1));
+  const regions = [0, 1, 2, 3, 4].filter((r) => r <= eggRegionMax());
   const names = [...RIVAL_NAMES].sort(() => Math.random() - 0.5);
   return [{ off: -1, mult: 1, tro: 5 }, { off: 0, mult: 1.5, tro: 10 }, { off: 2, mult: 2.2, tro: 20 }].map((d, i) => {
     const lvl = Math.max(1, p + d.off);
@@ -1079,31 +1137,39 @@ function showIntro() {
 
 // ---------- input ----------
 function setupInput() {
-  const dpad = $('#dpad');
-  let activeBtn = null;
-  const setDir = (btn) => {
-    if (activeBtn === btn) return;
-    if (activeBtn) activeBtn.classList.remove('on');
-    activeBtn = btn;
-    if (btn) btn.classList.add('on');
-    World.held = btn && !World.paused ? btn.dataset.dir : null;
-    heldDir = btn ? btn.dataset.dir : null;
+  // Thumbstick: drag anywhere on the left Joy-Con. Push far to run.
+  const pad = $('#joy-left'), stick = $('#stick'), knob = $('#knob');
+  let pid = null;
+  const moveStick = (e) => {
+    const r = stick.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2, R = r.width * 0.38;
+    let dx = e.clientX - cx, dy = e.clientY - cy;
+    const d = Math.hypot(dx, dy);
+    if (d > R) { dx *= R / d; dy *= R / d; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    if (d < R * 0.28) { heldDir = null; World.run = false; return; }
+    heldDir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+    World.run = d > R * 0.92;
   };
-  dpad.addEventListener('pointerdown', (e) => {
+  pad.addEventListener('pointerdown', (e) => {
     e.preventDefault();
-    dpad.setPointerCapture(e.pointerId);
-    setDir(e.target.closest('[data-dir]'));
+    musicUnlock();
+    pid = e.pointerId;
+    pad.setPointerCapture(pid);
+    stick.classList.add('on');
+    moveStick(e);
   });
-  dpad.addEventListener('pointermove', (e) => {
-    if (!activeBtn) return;
-    const el = document.elementFromPoint(e.clientX, e.clientY);
-    const btn = el && el.closest && el.closest('#dpad [data-dir]');
-    if (btn) setDir(btn);
-  });
-  const up = () => setDir(null);
-  dpad.addEventListener('pointerup', up);
-  dpad.addEventListener('pointercancel', up);
-  dpad.addEventListener('contextmenu', (e) => e.preventDefault());
+  pad.addEventListener('pointermove', (e) => { if (e.pointerId === pid) moveStick(e); });
+  const release = (e) => {
+    if (e.pointerId !== pid) return;
+    pid = null; heldDir = null; World.run = false;
+    stick.classList.remove('on');
+    knob.style.transform = '';
+  };
+  pad.addEventListener('pointerup', release);
+  pad.addEventListener('pointercancel', release);
+  pad.addEventListener('contextmenu', (e) => e.preventDefault());
+  document.addEventListener('pointerdown', musicUnlock, { once: true });
 
   const keys = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right' };
   window.addEventListener('keydown', (e) => {
@@ -1116,12 +1182,23 @@ function setupInput() {
   $('#btn-a').onclick = interact;
   $('#dialog').onclick = advanceDialog;
   $('#btn-team').onclick = () => { if (!busy && !dialogOpen) openPanel('Team', renderTeam); };
+  $('#btn-save').onclick = () => { save(); toast('Game saved!'); };
+  $('#btn-music').onclick = () => {
+    S.music = !S.music; save();
+    musicSetEnabled(S.music);
+    updateMusicButton();
+    toast(S.music ? 'Music on' : 'Music off');
+  };
   $('#panel-close').onclick = closePanel;
   $('#modal').onclick = (e) => { if (e.target.id === 'modal' && S.roster.length) closeModal(); };
   $('#b-speed').onclick = () => { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; $('#b-speed').textContent = S.speed + '×'; save(); };
   $('#b-skip').onclick = () => { BUI.skip = true; };
 }
 let heldDir = null;
+function updateMusicButton() {
+  $('#btn-music').classList.toggle('off', !S.music);
+  $('#music-label').textContent = S.music ? 'Music' : 'Muted';
+}
 
 // Keep the world's held direction in sync with input while not paused.
 function inputTick() {
@@ -1133,6 +1210,8 @@ function inputTick() {
 function init() {
   document.querySelectorAll('[data-icon]').forEach((el) => (el.innerHTML = ICONS[el.dataset.icon]));
   $('#version').textContent = VERSION;
+  Music.enabled = S.music !== false;
+  updateMusicButton();
   setupInput();
   const map = MAPS[S.map] ? S.map : 'town';
   worldInit($('#world'), { onStep, onDoor: (b) => enterBuilding(b), leadCreature });
