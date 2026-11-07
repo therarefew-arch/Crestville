@@ -604,7 +604,8 @@ function updateHud() {
   const crestText = `${S.crests}/${TOWN_CRESTS.length}`;
   if ($('#crests').textContent !== crestText && $('#crests').textContent) restartClass($('#crests').closest('.pill'), 'pill-bump', 500);
   $('#crests').textContent = crestText;
-  $('#map-name').textContent = World.map ? World.map.name : 'Crestville';
+  const sky = World.sky;
+  $('#map-name').innerHTML = `${esc(World.map ? World.map.name : 'Crestville')}${sky ? ` <span class="sky-tag">· ${PHASE_NAME[sky.phase]}${sky.weather !== 'clear' ? `, ${WEATHER_NAME[sky.weather]}` : ''}</span>` : ''}`;
 }
 function syncPause() {
   World.paused = dialogOpen || !$('#battle').classList.contains('hidden') || !$('#panel').classList.contains('hidden') || !$('#modal').classList.contains('hidden') || busy;
@@ -856,7 +857,7 @@ function pickWild(regions, faraway = false) {
   else test = (s) => regions.regions.includes(s.region);
   if (!Array.isArray(regions) && !regions.els && !regions.regions) test = () => true;
   const list = SPECIES.filter((s) => (faraway ? !test(s) : test(s)));
-  return weightedPick(list.length ? list : SPECIES, (s) => RARITY[s.rarity].wild);
+  return weightedPick(list.length ? list : SPECIES, (s) => RARITY[s.rarity].wild * envBoost(s.el));
   return weightedPick(list, (s) => RARITY[s.rarity].wild);
 }
 
@@ -865,7 +866,7 @@ async function wildEncounter() {
   const w = World.map.wild;
   const n = randInt(1, Math.max(1, Math.min(w.pack, teamSize())));
   // A small chance that a creature from a faraway region wanders in.
-  const visitor = Math.random() < 0.05;
+  const visitor = Math.random() < (World.sky && World.sky.phase === 'night' ? 0.1 : 0.05);
   const enemy = [];
   for (let i = 0; i < n; i++) {
     const sp = pickWild(w, visitor && i === 0);
@@ -989,6 +990,7 @@ function enterMap(id, x, y, dir) {
     if (!S.visited.includes(id)) S.visited.push(id);
   }
   musicPlay(World.map.music || 'meadow');
+  computeSky();
   save(); updateHud();
 }
 
@@ -1493,6 +1495,41 @@ function renderMarket(body) {
     S.coins -= cost; S.berries += n; save(); updateHud(); refreshPanel();
     toast(`Bought ${n} Sweet Berr${n > 1 ? 'ies' : 'y'}!`);
   }));
+}
+
+// ---------- time of day and weather ----------
+const PHASE_NAME = { dawn: 'Dawn', day: 'Day', dusk: 'Dusk', night: 'Night' };
+const WEATHER_NAME = { clear: 'Clear', rain: 'Rain', storm: 'Storm', fog: 'Fog', wind: 'Windy', snow: 'Snow', sandstorm: 'Sandstorm' };
+const WEATHER_ODDS = {
+  meadow: { clear: 55, rain: 20, fog: 10, wind: 15 }, willow: { clear: 45, rain: 35, fog: 15, wind: 5 },
+  sunpetal: { clear: 70, wind: 20, rain: 10 }, ember: { clear: 60, wind: 20, fog: 20 }, harbor: { clear: 45, rain: 25, storm: 10, wind: 20 },
+  swamp: { fog: 45, rain: 30, clear: 25 }, lantern: { clear: 50, fog: 30, rain: 20 }, desert: { clear: 65, sandstorm: 30, wind: 5 },
+  cog: { clear: 50, fog: 30, rain: 20 }, frost: { snow: 55, clear: 30, wind: 15 }, sky: { clear: 60, wind: 30, fog: 10 },
+};
+// Which elements show up more in each phase and weather.
+const ENV_BOOST = {
+  night: { shade: 3, spark: 1.5, leaf: 0.7, fire: 0.8 }, dusk: { shade: 1.5, fire: 1.3 }, dawn: { leaf: 1.3, water: 1.2 }, day: { leaf: 1.4, fire: 1.3, shade: 0.5 },
+  rain: { water: 2.5, spark: 1.5 }, storm: { spark: 3, water: 2 }, fog: { shade: 2, water: 1.3 }, wind: { spark: 2, gear: 1.3 },
+  snow: { water: 1.6, stone: 1.6 }, sandstorm: { stone: 2.5, fire: 1.5 }, clear: {},
+};
+function computeSky() {
+  const hr = new Date().getHours();
+  const phase = hr >= 19 || hr < 5 ? 'night' : hr < 7 ? 'dawn' : hr < 17 ? 'day' : 'dusk';
+  const theme = (World.map && World.map.theme) || 'meadow';
+  const odds = WEATHER_ODDS[theme] || WEATHER_ODDS.meadow;
+  const win = Math.floor(Date.now() / (20 * 60e3));
+  let h = [...(World.mapId || 'town')].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, win * 2654435761 >>> 0);
+  h = (h ^ (h >>> 15)) * 2246822519 >>> 0;
+  let roll = (h % 10000) / 10000 * Object.values(odds).reduce((a, b) => a + b, 0), weather = 'clear';
+  for (const [k, v] of Object.entries(odds)) { roll -= v; if (roll <= 0) { weather = k; break; } }
+  const changed = !World.sky || World.sky.phase !== phase || World.sky.weather !== weather;
+  World.sky = { phase, weather };
+  if (changed) updateHud();
+}
+function envBoost(el) {
+  const sky = World.sky;
+  if (!sky) return 1;
+  return (ENV_BOOST[sky.phase][el] || 1) * (ENV_BOOST[sky.weather][el] || 1);
 }
 
 // ---------- expeditions ----------
@@ -2155,6 +2192,7 @@ function init() {
   if (okSpot(map, S.x, S.y)) enterMap(map, S.x, S.y, S.dir);
   else enterMap(map, MAPS[map].start[0], MAPS[map].start[1], 'down');
   applyMount();
+  setInterval(computeSky, 60e3);
   if (S.jobs.some((j) => jobStored(j) > 0)) setTimeout(() => toast('Your helpers gathered things while you were away! Collect them in <b>Team → Jobs</b>.'), 1200);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => worldBake());
   updateHud();

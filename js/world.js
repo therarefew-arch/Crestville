@@ -325,6 +325,47 @@ function drawDeco(g, x, y, T) {
 
 // Floating ambience drawn over the map: petals, embers, snow, fireflies...
 const PARTICLES = Array.from({ length: 36 }, (_, i) => ({ x: hash(i, 3), y: hash(7, i), s: 0.5 + hash(i, i) * 0.8, p: hash(i, 11) * 6.28 }));
+// Time of day and weather, drawn over everything. World.sky = { phase, weather }.
+const RAIN = Array.from({ length: 70 }, (_, i) => ({ x: hash(i, 21), y: hash(31, i), s: 0.6 + hash(i, 5) * 0.8 }));
+function drawSky(g, W, H, time, px, py, T) {
+  const sky = World.sky || { phase: 'day', weather: 'clear' };
+  const tint = { night: 'rgba(28, 26, 78, .38)', dusk: 'rgba(255, 130, 80, .16)', dawn: 'rgba(255, 190, 160, .12)' }[sky.phase];
+  if (tint) {
+    g.fillStyle = tint; g.fillRect(0, 0, W, H);
+    if (sky.phase === 'night') {
+      // A soft lantern glow around the player.
+      const r = g.createRadialGradient(px, py, 4, px, py, T * 3.2);
+      r.addColorStop(0, 'rgba(255, 236, 180, .35)'); r.addColorStop(1, 'rgba(255, 236, 180, 0)');
+      g.fillStyle = r; g.fillRect(px - T * 4, py - T * 4, T * 8, T * 8);
+    }
+  }
+  const w = sky.weather;
+  if (w === 'rain' || w === 'storm') {
+    g.strokeStyle = 'rgba(200, 225, 240, .55)'; g.lineWidth = 1.4;
+    for (const d of RAIN) {
+      const x = (d.x * W + time * 40 * d.s) % W, y = (d.y * H + time * 420 * d.s) % H;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x - 3, y + 10 * d.s); g.stroke();
+    }
+    g.fillStyle = 'rgba(80, 100, 130, .10)'; g.fillRect(0, 0, W, H);
+  } else if (w === 'snow') {
+    g.fillStyle = 'rgba(255,255,255,.9)';
+    for (const d of RAIN) { const x = (d.x * W + Math.sin(time + d.y * 9) * 14) % W, y = (d.y * H + time * 28 * d.s) % H; g.beginPath(); g.arc(x, y, 1.6 + d.s, 0, 7); g.fill(); }
+  } else if (w === 'fog') {
+    for (let i = 0; i < 6; i++) {
+      const x = ((hash(i, 2) * W + time * 8 * (0.5 + hash(2, i))) % (W + 200)) - 100, y = hash(i, 9) * H;
+      g.fillStyle = 'rgba(245, 245, 240, .22)'; g.beginPath(); g.ellipse(x, y, 140, 40, 0, 0, 7); g.fill();
+    }
+    g.fillStyle = 'rgba(240, 240, 235, .14)'; g.fillRect(0, 0, W, H);
+  } else if (w === 'wind' || w === 'sandstorm') {
+    g.strokeStyle = w === 'sandstorm' ? 'rgba(214, 176, 112, .5)' : 'rgba(255, 255, 255, .55)'; g.lineWidth = 1.6;
+    for (const d of RAIN.slice(0, w === 'sandstorm' ? 70 : 22)) {
+      const x = (d.x * W + time * 260 * d.s) % (W + 60) - 30, y = d.y * H + Math.sin(time * 2 + d.x * 9) * 6;
+      g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + 10, y - 3, x + 22 * d.s, y); g.stroke();
+    }
+    if (w === 'sandstorm') { g.fillStyle = 'rgba(230, 200, 140, .18)'; g.fillRect(0, 0, W, H); }
+  }
+}
+
 function drawAmbient(g, W, H, time) {
   const t = th();
   if (t.tint) { g.fillStyle = t.tint; g.fillRect(0, 0, W, H); }
@@ -574,4 +615,5 @@ function worldDraw() {
   }
   g.restore();
   drawAmbient(g, W, H, World.time);
+  drawSky(g, W, H, World.time, px * T + T / 2 - camX, py * T + T / 2 - camY, T);
 }

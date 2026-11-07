@@ -2,6 +2,15 @@
 
 The version shows at the bottom of the game screen. Each update adds 1.
 
+## v0.0.13
+- Day and night follow your phone's clock: dawn, day, dusk and night lighting, with a soft
+  lantern glow around you at night.
+- Weather changes every 20 minutes and suits each town: rain, storms, fog, wind, snow in
+  Frostpeak and sandstorms in Sandglass Oasis.
+- Wild creatures change with it: Shade creatures come out at night, Water in the rain, Spark in
+  wind and storms, Stone in sandstorms. Rare visitors appear twice as often at night.
+- The town label shows the time of day and weather.
+
 ## v0.0.12
 - Breeding at the Hatchery: pick any two creatures as parents. The egg hatches right away as
   one of the parents' species. Stars mix the parents' (with a chance to beat both), each parent

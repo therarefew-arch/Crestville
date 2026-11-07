@@ -51,6 +51,7 @@ p { margin: 4px 0; }
 /* Top bar */
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; }
 .brand { display: flex; align-items: center; gap: 6px; font-size: 19px; font-weight: 600; min-width: 0; flex: 1; white-space: nowrap; }
+.sky-tag { font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 12px; color: var(--ink-soft); }
 .brand-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .map-chip {
   position: absolute; top: 8px; left: 10px; z-index: 1; pointer-events: none; max-width: calc(100% - 20px);
