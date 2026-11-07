@@ -336,10 +336,11 @@ function awardKills(report, mult = 1) {
     if (k.killerSide !== 'ally') continue;
     const xp = Math.round(killXp(k.victimLvl) * mult);
     total += xp;
-    if (earned.has(k.killer)) { earned.set(k.killer, earned.get(k.killer) + xp); koCount.set(k.killer, (koCount.get(k.killer) || 0) + 1); }
+    const kc = k.killer && team.find((c) => c.uid === k.killer.uid);
+    if (kc) { earned.set(kc, earned.get(kc) + xp); koCount.set(kc, (koCount.get(kc) || 0) + 1); }
   }
   for (const c of team) earned.set(c, earned.get(c) + Math.round(total * 0.2));
-  const dmg = new Map(((report && report.damage) || []).filter((d) => d.side === 'ally').map((d) => [d.c, d.dmg]));
+  const dmg = new Map(((report && report.damage) || []).filter((d) => d.side === 'ally').map((d) => [team.find((c) => c.uid === d.c.uid), d.dmg]));
   let mvp = null;
   for (const c of team) if ((dmg.get(c) || 0) > 0 && (!mvp || dmg.get(c) > dmg.get(mvp))) mvp = c;
   const rows = [];
@@ -759,7 +760,7 @@ function previewSide(team, side) {
 
 async function scout(ui, enemy, canRun) {
   for (;;) {
-    ui.setup({ ally: previewSide(teamEntries(), 'ally'), enemy: previewSide(enemy, 'enemy') }, true);
+    ui.setup({ ally: previewSide(battleTeam(), 'ally'), enemy: previewSide(enemy, 'enemy') }, true);
     const mine = S.team.map((uid, i) => {
       const c = uid != null && byUid(uid);
       return `<div class="mini-slot ${c ? '' : 'empty'} ${scoutSel === i ? 'sel' : ''}" data-s="${i}">${c ? art(c) : ''}</div>`;
@@ -780,6 +781,13 @@ async function scout(ui, enemy, canRun) {
   }
 }
 let scoutSel = null;
+// During an expedition, campfires and shrines boost the team through a hidden extra charm.
+function battleTeam() {
+  const boost = Run && Run.boost;
+  if (!boost || (!boost.atk && !boost.hp)) return teamEntries();
+  const extra = { cid: -1, name: 'Expedition boost', rarity: 'common', lvl: 1, affixes: [{ k: 'atk', v: boost.atk }, { k: 'hp', v: boost.hp }] };
+  return teamEntries().map((c) => c && { ...c, charms: [...(c.charms || []), extra] });
+}
 let lastReport = {};
 
 async function playBattle(title, enemy, { canRun = false } = {}) {
@@ -797,7 +805,7 @@ async function playBattle(title, enemy, { canRun = false } = {}) {
   if (choice === 'run') return 'run';
   $('#b-foot').innerHTML = '<p class="hint center">Front fights front. When one faints, the next steps up.</p>';
   lastReport = {};
-  const result = await runBattle(teamEntries(), enemy, ui, lastReport);
+  const result = await runBattle(battleTeam(), enemy, ui, lastReport);
   await sleep(BUI.skip ? 100 : 400);
   return result;
 }
@@ -1062,7 +1070,9 @@ function enterBuilding(b) {
 // ---------- travel ----------
 const TOWN_ORDER = ['town', ...TOWN_DEFS.map((d) => d.id)];
 function renderTravel(body) {
-  body.innerHTML = `<p class="hint">Hop on a cozy coach to any town you've visited.</p>
+  body.innerHTML = `<div class="card exp-card"><b>Expeditions</b><p class="hint">A short run of 6 stops and a boss. Pick your path, gather loot, and beat the boss for a guaranteed charm.</p>
+      <div class="exp-regions">${expeditionRegions().map((r) => `<button class="btn small" data-exp="${r.id}">${esc(r.name)} <small>Lv ${r.wild.min}-${r.wild.max + 2}</small></button>`).join('')}</div></div>
+    <p class="hint" style="margin-top:10px">Hop on a cozy coach to any town you've visited.</p>
     <div class="travel-list">${TOWN_ORDER.map((id, i) => {
       const m = MAPS[id], seen = S.visited.includes(id), here = World.mapId === id;
       const t = THEMES[m.theme || 'meadow'];
@@ -1072,6 +1082,7 @@ function renderTravel(body) {
         ${here ? '<span class="hint">You are here</span>' : seen ? `<button class="btn primary small" data-go="${id}">Travel</button>` : ''}
       </div>`;
     }).join('')}</div>`;
+  body.querySelectorAll('[data-exp]').forEach((b) => (b.onclick = () => startExpedition(b.dataset.exp)));
   body.querySelectorAll('[data-go]').forEach((b) => (b.onclick = async () => {
     closePanel();
     busy = true; syncPause();
@@ -1420,6 +1431,205 @@ function renderMarket(body) {
     S.coins -= cost; S.berries += n; save(); updateHud(); refreshPanel();
     toast(`Bought ${n} Sweet Berr${n > 1 ? 'ies' : 'y'}!`);
   }));
+}
+
+// ---------- expeditions ----------
+let Run = null;
+const RUN_STOPS = 6;
+const NODE_TYPES = {
+  wild:     { name: 'Wild pack',       desc: 'A group of wild creatures. XP and coins.', w: 40 },
+  trainer:  { name: 'Wandering tamer', desc: 'A tougher fight. Often drops a charm.', w: 20 },
+  treasure: { name: 'Treasure',        desc: 'Coins, resources, berries, maybe a charm.', w: 15 },
+  camp:     { name: 'Campfire',        desc: 'Rest: +attack and +HP for the rest of the run.', w: 12 },
+  shrine:   { name: 'Shrine',          desc: 'Choose one of three blessings.', w: 13 },
+};
+const NODE_ICON = {
+  wild: '<path d="M12 21 C7 21 5 17 8 14 C10 12 14 12 16 14 C19 17 17 21 12 21 Z M5.5 11 a2 2.5 0 1 0 .1 0 M9 7 a2 2.5 0 1 0 .1 0 M15 7 a2 2.5 0 1 0 .1 0 M18.5 11 a2 2.5 0 1 0 .1 0" />',
+  trainer: '<path d="M12 3 a4 4 0 1 0 .1 0 M4 21 C4 15 8 13 12 13 C16 13 20 15 20 21 Z" />',
+  treasure: '<path d="M3 10 C3 6 21 6 21 10 V19 H3 Z M3 11 H21 M11 11 H13 V14 H11 Z" />',
+  camp: '<path d="M12 3 C15 7 17 9 15 13 C14 11 13 11 12 12 C11 11 10 11 9 13 C7 9 9 7 12 3 Z M4 20 L20 16 M4 16 L20 20" />',
+  shrine: '<path d="M3 8 H21 L19 5 H5 Z M6 8 V20 M18 8 V20 M3 20 H21 M10 12 H14 V20 H10 Z" />',
+  boss: '<path d="M4 18 L6 7 L10 11 L12 5 L14 11 L18 7 L20 18 Z M4 21 H20" />',
+};
+function nodeIcon(type, size = 30) {
+  return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true"><g fill="currentColor" fill-opacity=".25" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round">${NODE_ICON[type]}</g></svg>`;
+}
+function expeditionRegions() {
+  const list = [{ id: 'meadow', name: 'Meadow Hollow', wild: { min: 3, max: 9, pack: 3, regions: [0, 1] } }];
+  for (const d of TOWN_DEFS) if (S.visited.includes(d.id)) list.push({ id: d.id, name: d.name, wild: MAPS[d.id].wild });
+  return list;
+}
+function genChoices() {
+  const keys = Object.keys(NODE_TYPES);
+  const a = weightedPick(keys, (k) => NODE_TYPES[k].w);
+  let b = a;
+  while (b === a) b = weightedPick(keys, (k) => NODE_TYPES[k].w);
+  return [a, b];
+}
+function runLevel(extra = 0) {
+  const w = Run.region.wild;
+  return Math.round(w.min + ((w.max - w.min) * Run.stop) / RUN_STOPS) + extra;
+}
+function startExpedition(id) {
+  if (!teamSize()) { toast('Add a creature to your team first.'); return; }
+  const region = expeditionRegions().find((r) => r.id === id);
+  Run = { region, stop: 0, path: [], boost: { atk: 0, hp: 0 }, coinMult: 1, xpMult: 1, choices: genChoices(), gains: { coins: 0, wins: 0, charms: [], res: {} } };
+  closePanel();
+  sfx('mount');
+  openPanel('Expedition', renderRun);
+}
+function runDrop(lvl, table) { const ch = dropCharm(lvl, table); Run.gains.charms.push(ch.rarity); return ch; }
+function runCoins(n) { const c = giveCoins(n * Run.coinMult); Run.gains.coins += c; return c; }
+
+function renderRun(body) {
+  if (!Run) return;
+  const R = Run;
+  const dots = [...R.path.map((t) => `<span class="run-dot done" title="${NODE_TYPES[t].name}">${nodeIcon(t, 16)}</span>`),
+    ...Array.from({ length: RUN_STOPS - R.path.length }, (_, i) => `<span class="run-dot ${i === 0 ? 'next' : ''}"></span>`),
+    `<span class="run-dot boss ${R.stop >= RUN_STOPS ? 'next' : ''}">${nodeIcon('boss', 16)}</span>`].join('<i></i>');
+  const chips = [R.boost.atk && `+${R.boost.atk} ATK`, R.boost.hp && `+${R.boost.hp} HP`, R.coinMult > 1 && `Coins ×${R.coinMult}`, R.xpMult > 1 && `XP ×${R.xpMult}`].filter(Boolean);
+  const choice = (t) => `<button class="node-card n-${t}" data-node="${t}">${nodeIcon(t, 40)}<b>${NODE_TYPES[t].name}</b><small>${NODE_TYPES[t].desc}</small>${t === 'wild' || t === 'trainer' ? `<span class="node-lv">Lv ~${runLevel(t === 'trainer' ? 1 : 0)}</span>` : ''}</button>`;
+  body.innerHTML = `
+    <div class="card run-head"><b>${esc(R.region.name)}</b> <span class="hint">· Stop ${Math.min(R.stop + 1, RUN_STOPS + 1)} of ${RUN_STOPS + 1}</span>
+      <div class="run-track">${dots}</div>
+      <div class="synergies">${chips.map((c) => `<span class="chip">${c}</span>`).join('') || '<span class="hint" style="font-size:12px">Campfires and shrines boost your team for this run.</span>'}</div>
+      <div class="run-gains"><span><span class="coin"></span> ${R.gains.coins}</span><span>${R.gains.wins} wins</span><span>${R.gains.charms.length} charms</span></div></div>
+    ${R.stop < RUN_STOPS
+      ? `<h3>Choose your path</h3><div class="node-choices">${R.choices.map(choice).join('')}</div>`
+      : `<h3>The boss awaits</h3><button class="node-card n-boss" data-boss>${nodeIcon('boss', 48)}<b>Expedition boss</b><small>A strong wild pack led by an alpha. Always drops a charm.</small><span class="node-lv">Lv ~${R.region.wild.max + 2}</span></button>`}
+    <button class="btn block" id="run-leave" style="margin-top:14px">Leave expedition</button>`;
+  body.querySelectorAll('[data-node]').forEach((b) => (b.onclick = () => doNode(b.dataset.node)));
+  const boss = body.querySelector('[data-boss]'); if (boss) boss.onclick = doBoss;
+  $('#run-leave').onclick = leaveRun;
+}
+function leaveRun() {
+  const sheet = openModal(`<h2>Leave the expedition?</h2><p class="hint">You keep everything you've earned so far.</p>
+    <div class="btn-row"><button class="btn" data-act="stay">Keep going</button><button class="btn primary" data-act="leave">Leave</button></div>`);
+  sheet.querySelector('[data-act=stay]').onclick = closeModal;
+  sheet.querySelector('[data-act=leave]').onclick = () => { closeModal(); finishRun('left'); };
+}
+function nextStop(type) {
+  Run.path.push(type);
+  Run.stop++;
+  Run.choices = genChoices();
+  save();
+  refreshPanel();
+}
+function runPack(n, lvl) {
+  return Array.from({ length: n }, () => rollCreature(pickWild(Run.region.wild).id, Math.max(1, lvl + randInt(-1, 0))));
+}
+async function runBattle_(title, enemy, xpMult, onWin) {
+  const result = await playBattle(title, enemy);
+  const xpRows = awardKills(lastReport, xpMult * Run.xpMult);
+  if (result === 'lose') {
+    await battleFooter(`<div class="result-banner lose">Your team is worn out</div><p class="hint center">The expedition ends here, but you keep your rewards.</p>${xpRows}`, [{ key: 'ok', label: 'Finish', cls: 'primary' }]);
+    closeBattle(false);
+    return finishRun('lost');
+  }
+  Run.gains.wins += result === 'win' ? 1 : 0;
+  const extra = result === 'win' ? onWin() : '';
+  await battleFooter(`<div class="result-banner ${result === 'win' ? 'win' : ''}">${result === 'win' ? 'Cleared!' : 'A tie! You slip past.'}</div>${extra}${xpRows}`, [{ key: 'ok', label: 'Onward', cls: 'primary' }]);
+  closeBattle(false);
+  return true;
+}
+async function doNode(type) {
+  const lv = runLevel();
+  if (type === 'wild') {
+    const ok = await runBattle_('Expedition · Wild pack', runPack(Math.min(3, Math.max(1, teamSize())), lv), 1, () => {
+      const c = runCoins(4 + lv * 2);
+      const ch = Math.random() < 0.08 ? runDrop(lv, 'wild') : null;
+      return `<p class="hint center">+${c} coins${ch ? ` · ✦ ${CHARM_RARITY[ch.rarity].name} charm!` : ''}</p>`;
+    });
+    if (ok === true) { await celebrate(); nextStop(type); }
+  } else if (type === 'trainer') {
+    const enemy = Array.from({ length: Math.min(5, Math.max(3, teamSize())) }, () => { const c = plainCreature(pickWild(Run.region.wild).id, lv + 1); c.roll = { a: 0.55, h: 0.55 }; return c; });
+    const ok = await runBattle_(`Expedition · ${rand(RIVAL_NAMES)} the wanderer`, enemy, 1.5, () => {
+      const c = runCoins(20 + lv * 5);
+      const ch = Math.random() < 0.5 ? runDrop(lv + 1, 'trainer') : null;
+      return `<p class="hint center">+${c} coins${ch ? ` · ✦ ${CHARM_RARITY[ch.rarity].name} charm!` : ''}</p>`;
+    });
+    if (ok === true) { await celebrate(); nextStop(type); }
+  } else if (type === 'treasure') {
+    const roll = Math.random();
+    let html;
+    if (roll < 0.45) { const c = runCoins(lv * 10); html = `<div class="treasure-big"><span class="coin"></span> <b data-count="${c}" data-ms="900">0</b> coins</div>`; }
+    else if (roll < 0.8) {
+      const k = rand(['ore', 'fish', 'herbs']), n = randInt(6, 14);
+      S.res[k] += n; Run.gains.res[k] = (Run.gains.res[k] || 0) + n;
+      html = `<div class="treasure-big">${resIcon(k, 30)} <b data-count="${n}" data-ms="700">0</b> ${RESOURCES[k].name.toLowerCase()}</div>`;
+    } else if (roll < 0.93) { S.berries += 2; updateHud(); html = '<div class="treasure-big"><span class="berry"></span> <b>2</b> Sweet Berries</div>'; }
+    else { const ch = runDrop(lv, 'wild'); html = `<div class="treasure-big">${charmSVG(ch, 40)} A ${CHARM_RARITY[ch.rarity].name} charm!</div>`; }
+    save();
+    sfx('coin');
+    await new Promise((resolve) => {
+      const sheet = openModal(`<div class="center">${nodeIcon('treasure', 60)}<h2>Treasure!</h2>${html}<button class="btn primary block" data-close style="margin-top:14px">Onward</button></div>`);
+      animateCounts(sheet);
+      sheet.querySelector('[data-close]').onclick = () => { closeModal(); resolve(); };
+    });
+    nextStop(type);
+  } else if (type === 'camp') {
+    const a = Math.max(1, Math.round(lv * 0.12)), h = Math.max(2, Math.round(lv * 0.3));
+    Run.boost.atk += a; Run.boost.hp += h;
+    sfx('levelup');
+    await new Promise((resolve) => {
+      const sheet = openModal(`<div class="center camp">${nodeIcon('camp', 60)}<h2>A cozy campfire</h2><p class="hint">Your team rests and feels stronger.</p>
+        <div class="lvl-gains" style="justify-content:center;margin-top:8px"><span class="gain atk">+${a} ATK</span><span class="gain hp">+${h} HP</span></div>
+        <p class="hint" style="margin-top:6px">For every battle in this run.</p><button class="btn primary block" data-close style="margin-top:14px">Onward</button></div>`);
+      sheet.querySelector('[data-close]').onclick = () => { closeModal(); resolve(); };
+    });
+    nextStop(type);
+  } else if (type === 'shrine') {
+    const all = [
+      { k: 'atk', name: 'Blessing of Might', desc: `+${Math.max(2, Math.round(lv * 0.2))} attack for the run` },
+      { k: 'hp', name: 'Blessing of Shelter', desc: `+${Math.max(4, Math.round(lv * 0.5))} HP for the run` },
+      { k: 'coins', name: 'Blessing of Plenty', desc: 'Coins ×1.5 for the run' },
+      { k: 'xp', name: 'Blessing of Wisdom', desc: 'XP ×1.5 for the run' },
+    ].sort(() => Math.random() - 0.5).slice(0, 3);
+    await new Promise((resolve) => {
+      const sheet = openModal(`<div class="center">${nodeIcon('shrine', 60)}<h2>A quiet shrine</h2><p class="hint">Choose one blessing.</p></div>
+        <div class="choice-list">${all.map((b) => `<button class="btn block choice" data-bless="${b.k}"><b>${b.name}</b><small>${b.desc}</small></button>`).join('')}</div>`);
+      sheet.querySelectorAll('[data-bless]').forEach((el) => (el.onclick = () => {
+        const k = el.dataset.bless;
+        if (k === 'atk') Run.boost.atk += Math.max(2, Math.round(lv * 0.2));
+        if (k === 'hp') Run.boost.hp += Math.max(4, Math.round(lv * 0.5));
+        if (k === 'coins') Run.coinMult = 1.5;
+        if (k === 'xp') Run.xpMult = 1.5;
+        sfx('ding'); closeModal(); resolve();
+      }));
+    });
+    nextStop(type);
+  }
+}
+async function doBoss() {
+  const lv = Run.region.wild.max + 2;
+  const enemy = Array.from({ length: 5 }, (_, i) => rollCreature(pickWild(Run.region.wild).id, lv - (i ? 1 : 0), { good: i === 0 }));
+  const alpha = nameOf(enemy[0]);
+  const ok = await runBattle_(`Boss · Alpha ${alpha}`, enemy, 2, () => {
+    const c = runCoins(60 + lv * 10);
+    const ch = runDrop(lv, 'champion');
+    return `<p class="hint center">+${c} coins · ✦ ${CHARM_RARITY[ch.rarity].name} charm!</p>`;
+  });
+  if (ok === true) finishRun('won');
+}
+async function finishRun(how) {
+  const R = Run;
+  if (!R) return;
+  Run = null;
+  closePanel();
+  await celebrate();
+  const title = how === 'won' ? 'Expedition complete!' : how === 'lost' ? 'Expedition over' : 'You headed home';
+  const res = Object.entries(R.gains.res).map(([k, v]) => `<span>${resIcon(k, 18)} ${v}</span>`).join('');
+  if (how === 'won') sfx('fanfare');
+  const sheet = openModal(`<div class="center">${how === 'won' ? confettiHTML(30) : ''}<h2>${title}</h2>
+    <p class="hint">${esc(R.region.name)} · ${R.path.length} of ${RUN_STOPS} stops${how === 'won' ? ' and the boss' : ''}</p>
+    <div class="run-summary">
+      <div><b data-count="${R.gains.coins}" data-ms="1000">0</b><small>coins</small></div>
+      <div><b data-count="${R.gains.wins}" data-ms="600" data-quiet>0</b><small>battles won</small></div>
+      <div><b data-count="${R.gains.charms.length}" data-ms="600" data-quiet>0</b><small>charms</small></div>
+    </div>${res ? `<div class="rc-cost" style="justify-content:center;margin-top:6px">${res}</div>` : ''}
+    <button class="btn primary block" data-close style="margin-top:14px">Back to town</button></div>`);
+  animateCounts(sheet);
+  sheet.querySelector('[data-close]').onclick = closeModal;
 }
 
 // ---------- jobs and skilling ----------
@@ -1854,7 +2064,7 @@ function setupInput() {
   $('#btn-ride').onclick = openRide;
   $('#btn-team').onclick = () => { if (!busy && !dialogOpen) openPanel('Team', renderTeam); };
   $('#btn-settings').onclick = () => { if (!busy && !dialogOpen) openPanel('Settings', renderSettings); };
-  $('#panel-close').onclick = closePanel;
+  $('#panel-close').onclick = () => { if (Run && panelRender === renderRun) return leaveRun(); closePanel(); };
   $('#modal').onclick = (e) => { if (e.target.id === 'modal' && S.roster.length) closeModal(); };
   $('#b-speed').onclick = () => { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; $('#b-speed').textContent = S.speed + '×'; save(); };
   $('#b-skip').onclick = () => { BUI.skip = true; };

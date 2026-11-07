@@ -2,6 +2,16 @@
 
 The version shows at the bottom of the game screen. Each update adds 1.
 
+## v0.0.11
+- Expeditions: start one from any Travel Post (or Coach Driver Bea). Choose a region you've
+  visited; each run is 6 stops and a boss, about 3 to 5 minutes.
+- At every stop pick one of two paths: Wild pack, Wandering tamer, Treasure, Campfire (+attack
+  and +HP for the rest of the run) or Shrine (choose one of three blessings: might, shelter,
+  coins ×1.5 or XP ×1.5).
+- Levels rise stop by stop; the boss pack is led by a strong alpha and always drops a charm
+  (often Epic or Legendary).
+- Losing ends the run but you keep everything. A summary shows coins, wins and charms.
+
 ## v0.0.10
 - Town jobs: creatures resting at home (not on your team) can mine, fish or forage in towns
   you've visited. Later towns pay more, and matching elements work 50% faster. Helpers keep

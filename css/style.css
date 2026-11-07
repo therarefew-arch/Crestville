@@ -162,6 +162,7 @@ p { margin: 4px 0; }
 button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 
 /* Battle */
+.battle { z-index: 12 !important; }
 .battle, .panel {
   position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column;
   background-color: var(--paper);
@@ -598,6 +599,40 @@ button.skill { font: inherit; font-size: 13px; border: 2px dashed #e9cf9a; curso
 .rc-cost { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 3px; font-size: 12px; }
 .rc-cost span { display: inline-flex; align-items: center; gap: 2px; }
 .rc-cost .short { color: var(--coral-dark); }
+/* Expeditions */
+.exp-card b { font-family: 'Fredoka', sans-serif; font-weight: 600; font-size: 17px; }
+.exp-regions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.exp-regions .btn small { display: block; font-family: 'Nunito', sans-serif; font-size: 11px; color: var(--ink-soft); }
+.run-head > b { font-family: 'Fredoka', sans-serif; font-weight: 600; font-size: 18px; }
+.run-track { display: flex; align-items: center; margin: 10px 0 8px; }
+.run-track i { flex: 1; height: 3px; background: var(--line); border-radius: 2px; }
+.run-dot { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); background: var(--card); display: flex; align-items: center; justify-content: center; color: var(--ink-soft); flex: none; }
+.run-dot.done { border-color: var(--green-dark); background: #e4f1d8; color: var(--green-dark); }
+.run-dot.next { border-color: var(--coral-dark); box-shadow: 0 0 0 3px #fbe9dc; animation: shimmer 1.4s ease-in-out infinite; }
+.run-dot.boss { width: 32px; height: 32px; color: #b9842a; border-color: #e0a32e; }
+.run-gains { display: flex; gap: 14px; font-size: 13px; color: var(--ink-soft); margin-top: 6px; align-items: center; }
+.run-gains span { display: inline-flex; align-items: center; gap: 4px; }
+.node-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.node-card {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; font: inherit; color: var(--ink); cursor: pointer;
+  background: var(--card); border: 2.5px solid var(--ink); border-radius: 20px; padding: 14px 8px; box-shadow: 0 4px 0 var(--ink);
+  animation: rowIn .35s ease both;
+}
+.node-card:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+.node-card b { font-family: 'Fredoka', sans-serif; font-weight: 600; font-size: 16px; }
+.node-card small { font-size: 12px; color: var(--ink-soft); line-height: 1.3; }
+.node-lv { font-size: 12px; font-weight: 800; background: var(--paper-2); border-radius: 99px; padding: 1px 8px; }
+.n-wild { color: #5e8a4a; } .n-trainer { color: #c96f61; } .n-treasure { color: #b9842a; } .n-camp { color: #d9774a; } .n-shrine { color: #8f7bc0; }
+.n-boss { width: 100%; color: #b9842a; background: linear-gradient(#fff4d0, var(--card)); }
+.node-card b, .node-card small { color: var(--ink); }
+.node-card small { color: var(--ink-soft); }
+.treasure-big { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 20px; margin-top: 8px; }
+.treasure-big b { font-family: 'Fredoka', sans-serif; font-size: 30px; }
+.treasure-big .coin, .treasure-big .berry { width: 26px; height: 26px; }
+.run-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.run-summary div { background: var(--paper); border-radius: 14px; padding: 10px 4px; }
+.run-summary b { display: block; font-family: 'Fredoka', sans-serif; font-size: 26px; font-variant-numeric: tabular-nums; }
+.run-summary small { color: var(--ink-soft); font-size: 12px; }
 @media (max-height: 700px) {
   .joycon { height: 138px; }
   .stick { width: 94px; height: 94px; }
