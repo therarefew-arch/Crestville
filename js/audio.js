@@ -177,6 +177,21 @@ function sfx(name, arg = 0) {
       tone('sine', n(57), t, 1.1, 0.08, 0.05, out, n(69));
       tone('triangle', n(64), t + 0.2, 0.9, 0.04, 0.05, out, n(76));
       break;
+    case 'count':
+      tone('sine', 620 + arg * 28, t, 0.05, 0.035, 0.003, out);
+      break;
+    case 'coin':
+      tone('square', n(88), t, 0.08, 0.03, 0.003, out);
+      tone('square', n(93), t + 0.07, 0.22, 0.03, 0.003, out);
+      break;
+    case 'ding':
+      tone('triangle', n(84), t, 0.35, 0.1, 0.003, out);
+      tone('sine', n(91), t + 0.05, 0.4, 0.06, 0.003, out);
+      tone('sine', n(96), t + 0.1, 0.45, 0.04, 0.003, out);
+      break;
+    case 'bighit':
+      tone('triangle', n(40), t, 0.25, 0.14, 0.003, out, n(28));
+      break;
     case 'tick':
       tone('sine', 380 + arg * 38, t, 0.08, 0.07, 0.004, out);
       break;

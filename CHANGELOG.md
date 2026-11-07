@@ -2,6 +2,15 @@
 
 The version shows at the bottom of the game screen. Each update adds 1.
 
+## v0.0.06
+- After every battle, XP bars fill with rolling numbers and rising ticks. A full bar bursts
+  "LEVEL UP!", dings, bumps the level and keeps filling.
+- Battle MVP: the creature that dealt the most damage gets a gold crown, with damage and K.O.s shown.
+- Coins roll up in the top bar with a ding, a bounce and a floating "+N". Crests bounce when earned.
+- Damage numbers scale with the size of the hit; big hits shake the arena with a thump, and
+  finishing blows stamp "K.O.!".
+- Level-up cards and evolutions roll attack, HP and level up from old to new values.
+
 ## v0.0.05
 - Gentler walking speed. Pushing the stick all the way jogs a little faster.
 - Level-ups get a celebration card: confetti, hopping creatures, the new level popping in,

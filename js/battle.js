@@ -158,6 +158,7 @@ async function runBattle(allyTeam, enemyTeam, ui = null, report = null) {
   const has = (u, t) => u.traits.includes(t);
   const knows = (u, k) => u.skills.includes(k);
   const kills = [];
+  const dealt = new Map();
 
   // Fire every skill this creature holds that matches the trigger.
   async function fire(u, trig, extra = {}) {
@@ -187,6 +188,7 @@ async function runBattle(allyTeam, enemyTeam, ui = null, report = null) {
       const wasUp = target.hp > 0;
       target.hp -= amount;
       if (wasUp && target.hp <= 0 && src && src.side !== target.side) kills.push({ killer: src, victim: target });
+      if (src && src.side !== target.side) dealt.set(src, (dealt.get(src) || 0) + amount);
       await call('damage', target, amount, tag);
       if (target.hp > 0) await fire(target, 'hurt', { src });
     },
@@ -260,6 +262,7 @@ async function runBattle(allyTeam, enemyTeam, ui = null, report = null) {
 
   const result = B.ally.length && !B.enemy.length ? 'win' : !B.ally.length && B.enemy.length ? 'lose' : 'draw';
   if (report) report.kills = kills.map((k) => ({ killer: k.killer.src, killerSide: k.killer.side, victimLvl: k.victim.lvl }));
+  if (report) report.damage = [...dealt].map(([u, dmg]) => ({ c: u.src, side: u.side, dmg }));
   await call('end', result);
   return result;
 }

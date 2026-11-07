@@ -1,7 +1,7 @@
 // Game data: elements, roles, creatures, traits and regions.
 
 // Bump by one with every update (v0.0.02, v0.0.03, ...). Also add a line to CHANGELOG.md.
-const VERSION = 'v0.0.05';
+const VERSION = 'v0.0.06';
 
 const ELEMENTS = {
   leaf:  { name: 'Leaf',  color: '#a8cf8e', dark: '#5e8a4a', beats: ['water', 'stone'] },

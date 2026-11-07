@@ -54,6 +54,36 @@ function toast(msg) {
   $('#toasts').appendChild(t);
   setTimeout(() => t.remove(), 3100);
 }
+// Numbers roll up instead of just changing, with soft rising ticks.
+function countUp(el, from, to, ms = 900, { sound = true, fmt = (v) => v.toLocaleString() } = {}) {
+  return new Promise((resolve) => {
+    if (!el) return resolve();
+    const t0 = performance.now();
+    let last = null, lastTick = 0;
+    const step = (t) => {
+      const k = Math.min(1, (t - t0) / ms);
+      const v = Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3)));
+      if (v !== last) {
+        el.textContent = fmt(v); last = v;
+        if (sound && t - lastTick > 60) { sfx('count', k * 20); lastTick = t; }
+      }
+      if (k < 1) requestAnimationFrame(step); else { el.textContent = fmt(to); resolve(); }
+    };
+    requestAnimationFrame(step);
+  });
+}
+// Any element with data-count="to" (and optional data-from, data-delay, data-ms) rolls up.
+function animateCounts(root) {
+  root.querySelectorAll('[data-count]').forEach((el) => {
+    const to = Number(el.dataset.count), from = Number(el.dataset.from || 0);
+    el.textContent = from.toLocaleString();
+    setTimeout(() => countUp(el, from, to, Number(el.dataset.ms || 800), { sound: el.dataset.quiet == null }).then(() => {
+      el.classList.add('counted');
+      if (el.dataset.pop != null) { restartClass(el, 'num-pop', 450); }
+    }), Number(el.dataset.delay || 0));
+  });
+}
+
 function restartClass(el, cls, ms) {
   if (!el) return;
   el.classList.remove(cls);
@@ -186,8 +216,10 @@ function showLevelUps() {
       <div class="lvl-art" style="animation-delay:${d + 0.2}s">${creatureSVG(sp, shownStage, { shiny: c.shiny })}</div>
       <div class="lvl-info">
         <b>${esc(sp.names[shownStage])}</b>
-        <div class="lvl-num">Lv ${e.from} <span>→</span> <em style="animation-delay:${d + 0.35}s">${c.lvl}</em></div>
-        <div class="lvl-gains">${da ? `<span class="gain atk" style="animation-delay:${d + 0.5}s">+${da} ATK</span>` : ''}${dh ? `<span class="gain hp" style="animation-delay:${d + 0.6}s">+${dh} HP</span>` : ''}
+        <div class="lvl-num">Lv ${e.from} <span>→</span> <em style="animation-delay:${d + 0.35}s" data-count="${c.lvl}" data-from="${e.from}" data-delay="${(d + 0.35) * 1000}" data-ms="${Math.min(1200, 350 + (c.lvl - e.from) * 120)}" data-pop>${e.from}</em></div>
+        <div class="lvl-stats"><span>ATK ${e.before.atk} → <b data-count="${now.atk}" data-from="${e.before.atk}" data-delay="${(d + 0.6) * 1000}" data-ms="700" data-quiet data-pop>${e.before.atk}</b></span>
+          <span>HP ${e.before.hp} → <b data-count="${now.hp}" data-from="${e.before.hp}" data-delay="${(d + 0.7) * 1000}" data-ms="700" data-quiet data-pop>${e.before.hp}</b></span></div>
+        <div class="lvl-gains">${da ? `<span class="gain atk" style="animation-delay:${d + 1.2}s">+${da} ATK</span>` : ''}${dh ? `<span class="gain hp" style="animation-delay:${d + 1.3}s">+${dh} HP</span>` : ''}
           ${e.learned.map((k, j) => `<span class="gain skill" style="animation-delay:${d + 0.7 + j * 0.1}s">New skill: ${ABILITY[k].name}</span>`).join('')}</div>
         ${evolving ? `<div class="lvl-evo" style="animation-delay:${d + 0.8}s">Something is happening…</div>` : ''}
       </div></div>`;
@@ -198,6 +230,7 @@ function showLevelUps() {
       <div class="lvl-list">${cards}</div>
       <button class="btn primary block" data-close style="margin-top:14px">Yay!</button></div>`);
     entries.forEach((e, i) => setTimeout(() => sfx('pop', i * 2), 450 + i * 180));
+    animateCounts(sheet);
     sheet.querySelector('[data-close]').onclick = () => { closeModal(); resolve(); };
   });
 }
@@ -235,7 +268,8 @@ async function playEvolution(c, e) {
   await sleep(250);
   sfx('fanfare');
   $('#evo-text').innerHTML = `Congratulations! <b>${esc(sp.names[e.fromStage])}</b> evolved into <b class="evo-name">${esc(sp.names[e.toStage])}</b>!
-    <div class="evo-stats"><span>ATK ${before.atk} → <b>${after.atk}</b></span><span>HP ${before.hp} → <b>${after.hp}</b></span></div>`;
+    <div class="evo-stats"><span>ATK ${before.atk} → <b data-count="${after.atk}" data-from="${before.atk}" data-delay="350" data-ms="900" data-pop>${before.atk}</b></span><span>HP ${before.hp} → <b data-count="${after.hp}" data-from="${before.hp}" data-delay="500" data-ms="900" data-quiet data-pop>${before.hp}</b></span></div>`;
+  animateCounts($('#evo-text'));
   await sleep(900);
   await new Promise((resolve) => {
     $('#evo-foot').innerHTML = '<button class="btn primary">Amazing!</button>';
@@ -289,25 +323,67 @@ function killXp(victimLvl) { return Math.round(4 + victimLvl * 3); }
 function awardKills(report, mult = 1) {
   const team = teamEntries().filter(Boolean);
   const earned = new Map(team.map((c) => [c, 0]));
+  const koCount = new Map();
   let total = 0;
   for (const k of (report && report.kills) || []) {
     if (k.killerSide !== 'ally') continue;
     const xp = Math.round(killXp(k.victimLvl) * mult);
     total += xp;
-    if (earned.has(k.killer)) earned.set(k.killer, earned.get(k.killer) + xp);
+    if (earned.has(k.killer)) { earned.set(k.killer, earned.get(k.killer) + xp); koCount.set(k.killer, (koCount.get(k.killer) || 0) + 1); }
   }
   for (const c of team) earned.set(c, earned.get(c) + Math.round(total * 0.2));
+  const dmg = new Map(((report && report.damage) || []).filter((d) => d.side === 'ally').map((d) => [d.c, d.dmg]));
+  let mvp = null;
+  for (const c of team) if ((dmg.get(c) || 0) > 0 && (!mvp || dmg.get(c) > dmg.get(mvp))) mvp = c;
   const rows = [];
-  for (const [c, xp] of earned) {
-    if (!xp) continue;
-    const before = c.lvl;
-    const capped = c.lvl >= MAX_LEVEL;
-    addXp(c, xp);
-    rows.push(`<span class="xp-chip">${esc(nameOf(c))} ${capped ? 'max' : `+${Math.round(xp * (c.traits.includes('scholar') ? 1.3 : 1))}`}${c.lvl > before ? ` <b>Lv ${c.lvl}!</b>` : ''}</span>`);
-  }
+  team.forEach((c, i) => {
+    const xp = earned.get(c);
+    const fromLvl = c.lvl, fromXp = c.xp;
+    const gain = c.lvl >= MAX_LEVEL ? 0 : Math.round(xp * (c.traits.includes('scholar') ? 1.3 : 1));
+    if (xp) addXp(c, xp);
+    const sp = SPECIES_BY_ID[c.id];
+    rows.push(`<div class="xp-line ${c === mvp ? 'mvp' : ''}" data-from-lvl="${fromLvl}" data-from-xp="${fromXp}" data-to-lvl="${c.lvl}" data-to-xp="${c.xp}" data-delay="${200 + i * 140}">
+      <div class="mini">${creatureSVG(sp, evoStage(fromLvl), { shiny: c.shiny })}</div>
+      <div class="xp-mid">
+        <div class="xp-top"><b>${esc(sp.names[evoStage(fromLvl)])}</b>${c === mvp ? '<span class="mvp-tag">★ MVP</span>' : ''}
+          <span class="xp-lv">Lv <em>${fromLvl}</em></span></div>
+        <div class="xp-track"><i style="width:${fromLvl >= MAX_LEVEL ? 100 : (100 * fromXp) / xpNeed(fromLvl)}%"></i><span class="xp-burst">LEVEL UP!</span></div>
+        <div class="xp-sub"><span class="xp-gain">+<em data-count="${gain}" data-delay="${200 + i * 140}" data-ms="900" ${i ? 'data-quiet' : ''}>0</em> XP</span>
+          ${dmg.get(c) ? `<span><em data-count="${dmg.get(c)}" data-delay="${350 + i * 140}" data-ms="800" data-quiet>0</em> dmg</span>` : ''}
+          ${koCount.get(c) ? `<span>${koCount.get(c)} K.O.</span>` : ''}</div>
+      </div></div>`);
+  });
   save();
-  return rows.length ? `<div class="xp-row">${rows.join('')}</div>` : '';
+  return rows.length ? `<div class="xp-panel">${rows.join('')}</div>` : '';
 }
+
+// Fill each XP bar; when one fills up it bursts, the level ticks up and it keeps going.
+function animateXp(root) {
+  root.querySelectorAll('.xp-line').forEach((line) => {
+    const d = line.dataset;
+    let lvl = Number(d.fromLvl), xp = Number(d.fromXp);
+    const toLvl = Number(d.toLvl), toXp = Number(d.toXp);
+    const bar = line.querySelector('.xp-track i'), lvEl = line.querySelector('.xp-lv em'), burst = line.querySelector('.xp-burst');
+    const fill = (pct, ms) => { bar.style.transition = `width ${ms}ms cubic-bezier(.3,.7,.4,1)`; bar.style.width = pct + '%'; return sleep(ms); };
+    setTimeout(async () => {
+      while (lvl < toLvl) {
+        await fill(100, 520);
+        lvl++;
+        lvEl.textContent = lvl;
+        restartClass(lvEl, 'num-pop', 450);
+        restartClass(burst, 'go', 900);
+        restartClass(line, 'lvl-flash', 700);
+        sfx('ding');
+        await sleep(260);
+        bar.style.transition = 'none'; bar.style.width = '0%'; void bar.offsetWidth;
+        xp = 0;
+      }
+      if (lvl >= MAX_LEVEL) await fill(100, 300);
+      else await fill((100 * toXp) / xpNeed(lvl), 600);
+    }, Number(d.delay || 0));
+  });
+}
+
 function giveCoins(n) { n = Math.round(n * coinBonus()); S.coins += n; save(); updateHud(); return n; }
 
 function giveCreature(c) {
@@ -345,10 +421,33 @@ function revealHTML(c, title, note) {
 }
 
 // ---------- HUD ----------
+let shownCoins = null, coinAnim = 0;
 function updateHud() {
-  $('#coins').textContent = S.coins.toLocaleString();
+  if (shownCoins === null) { shownCoins = S.coins; $('#coins').textContent = S.coins.toLocaleString(); }
+  else if (shownCoins !== S.coins) {
+    const from = shownCoins, to = S.coins, token = ++coinAnim;
+    shownCoins = to;
+    const pill = $('#coins').closest('.pill');
+    if (to > from) {
+      sfx('coin');
+      const f = h(`<span class="coin-float">+${(to - from).toLocaleString()}</span>`);
+      pill.appendChild(f); setTimeout(() => f.remove(), 1100);
+      restartClass(pill, 'pill-bump', 500);
+    }
+    const el = $('#coins');
+    const t0 = performance.now(), ms = Math.min(1200, 400 + Math.abs(to - from) * 6);
+    const step = (t) => {
+      if (token !== coinAnim) return;
+      const k = Math.min(1, (t - t0) / ms);
+      el.textContent = Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3))).toLocaleString();
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
   $('#berries').textContent = S.berries;
-  $('#crests').textContent = `${S.crests}/${TOWN_CRESTS.length}`;
+  const crestText = `${S.crests}/${TOWN_CRESTS.length}`;
+  if ($('#crests').textContent !== crestText && $('#crests').textContent) restartClass($('#crests').closest('.pill'), 'pill-bump', 500);
+  $('#crests').textContent = crestText;
   $('#map-name').textContent = World.map ? World.map.name : 'Crestville';
 }
 function syncPause() {
@@ -429,11 +528,12 @@ function makeBattleUI() {
     if (pulseHp) restartClass(e.querySelector('.badge-hp'), 'pulse', 200);
   }
   function float(u, text, cls) {
-    const e = el(u); if (!e) return;
+    const e = el(u); if (!e) return null;
     const f = h(`<span class="float ${cls}">${text}</span>`);
     f.style.marginLeft = (Math.random() * 16 - 8) + 'px';
     e.appendChild(f);
-    setTimeout(() => f.remove(), 950);
+    setTimeout(() => f.remove(), 1100);
+    return f;
   }
   return {
     async setup(B, instant = false) {
@@ -459,7 +559,12 @@ function makeBattleUI() {
       await bwait(450);
     },
     async damage(u, n, tag) {
-      float(u, `-${n}${tag === 'strong' ? '!' : ''}`, tag);
+      // Bigger hits get bigger numbers; huge ones shake the arena.
+      const ratio = n / Math.max(1, u.hp + n);
+      const f = float(u, `-${n}${tag === 'strong' ? '!' : ''}`, tag);
+      if (f) f.style.fontSize = Math.round(18 + Math.min(20, ratio * 24) + Math.min(10, n / 3) + (tag === 'strong' ? 3 : 0)) + 'px';
+      if (ratio >= 0.5 || n >= 15) { restartClass(lane, 'shake', 320); if (!BUI.skip) sfx('bighit'); }
+      if (u.hp <= 0) float(u, 'K.O.!', 'ko');
       restartClass(el(u), 'hurt', 300);
       badges(u, false, true);
       await bwait(260);
@@ -547,6 +652,8 @@ function battleFooter(html, buttons) {
     const foot = $('#b-foot');
     foot.innerHTML = `${html}<div class="btn-row" style="grid-template-columns:repeat(${buttons.length},1fr);margin-top:0">${buttons.map((b, i) => `<button class="btn ${b.cls || ''}" data-i="${i}">${b.label}</button>`).join('')}</div>`;
     foot.querySelectorAll('[data-i]').forEach((btn) => (btn.onclick = () => resolve(buttons[Number(btn.dataset.i)].key)));
+    animateXp(foot);
+    animateCounts(foot);
   });
 }
 function closeBattle(celebrateNow = true) {
