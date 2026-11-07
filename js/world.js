@@ -1,8 +1,8 @@
 // Top-down overworld drawn on a canvas: tiles, buildings, people, and the follower creature.
 
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-const STEP_TIME = 0.17; // seconds per tile (running is faster)
-const RUN_TIME = 0.11;
+const STEP_TIME = 0.25; // seconds per tile (a gentle walk; mounts can speed this up later)
+const RUN_TIME = 0.18;
 
 const World = {
   canvas: null, ctx: null, T: 32, dpr: 1, W: 0, H: 0,

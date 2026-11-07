@@ -67,14 +67,15 @@ function buildSong(def) {
   return { def, steps, stepDur: 60 / def.bpm / 4 };
 }
 
-function tone(type, freq, start, dur, vol, attack = 0.01) {
+function tone(type, freq, start, dur, vol, attack = 0.01, dest = null, glideTo = null) {
   const ctx = Music.ctx;
   const o = ctx.createOscillator(), gn = ctx.createGain();
-  o.type = type; o.frequency.value = freq;
+  o.type = type; o.frequency.setValueAtTime(freq, start);
+  if (glideTo) o.frequency.exponentialRampToValueAtTime(glideTo, start + dur);
   gn.gain.setValueAtTime(0, start);
   gn.gain.linearRampToValueAtTime(vol, start + attack);
   gn.gain.exponentialRampToValueAtTime(0.0001, start + dur);
-  o.connect(gn); gn.connect(Music.filter);
+  o.connect(gn); gn.connect(dest || Music.filter);
   o.start(start); o.stop(start + dur + 0.05);
 }
 
@@ -119,10 +120,10 @@ function musicStop() {
 }
 
 // Browsers only allow sound after the player touches the screen.
-function musicUnlock() {
-  if (Music.ctx || !Music.enabled) return;
+function ensureAudio() {
+  if (Music.ctx) return Music.ctx;
   const AC = window.AudioContext || window.webkitAudioContext;
-  if (!AC) return;
+  if (!AC) return null;
   Music.ctx = new AC();
   Music.master = Music.ctx.createGain();
   Music.master.gain.value = 0;
@@ -130,12 +131,69 @@ function musicUnlock() {
   Music.filter.type = 'lowpass'; Music.filter.frequency.value = 2600;
   Music.filter.connect(Music.master);
   Music.master.connect(Music.ctx.destination);
-  if (Music.want) musicPlay(Music.want);
+  Music.sfx = Music.ctx.createGain();
+  Music.sfx.gain.value = 0.9;
+  Music.sfx.connect(Music.ctx.destination);
+  return Music.ctx;
+}
+
+function musicUnlock() {
+  if (!ensureAudio()) return;
+  if (Music.ctx.state === 'suspended' && Music.ctx.resume) Music.ctx.resume();
+  if (Music.enabled && Music.want && !Music.timer) musicPlay(Music.want);
 }
 
 function musicSetEnabled(on) {
   Music.enabled = on;
   if (!on) { musicStop(); return; }
-  if (!Music.ctx) musicUnlock();
-  else { Music.ctx.resume && Music.ctx.resume(); if (Music.want) musicPlay(Music.want); }
+  musicUnlock();
+  if (Music.want) musicPlay(Music.want);
+}
+
+// Turn the music down while something important happens, then back up.
+function musicDuck(on) {
+  if (!Music.ctx || !Music.master || !Music.timer) return;
+  const g = Music.master.gain, t = Music.ctx.currentTime;
+  g.cancelScheduledValues(t);
+  g.setValueAtTime(g.value, t);
+  g.linearRampToValueAtTime(on ? 0.12 : 0.8, t + (on ? 0.4 : 1.5));
+}
+
+// ---------- sound effects ----------
+const Sfx = { enabled: true };
+function sfx(name, arg = 0) {
+  if (!Sfx.enabled || !ensureAudio()) return;
+  const t = Music.ctx.currentTime + 0.02, out = Music.sfx;
+  const n = (m) => midiHz(m);
+  switch (name) {
+    case 'levelup':
+      [72, 76, 79, 84].forEach((m, i) => tone('triangle', n(m), t + i * 0.08, 0.3, 0.13, 0.005, out));
+      [96, 100, 103].forEach((m, i) => tone('sine', n(m), t + 0.36 + i * 0.05, 0.25, 0.05, 0.005, out));
+      break;
+    case 'pop':
+      tone('sine', n(84 + arg), t, 0.12, 0.08, 0.005, out);
+      break;
+    case 'evostart':
+      tone('sine', n(57), t, 1.1, 0.08, 0.05, out, n(69));
+      tone('triangle', n(64), t + 0.2, 0.9, 0.04, 0.05, out, n(76));
+      break;
+    case 'tick':
+      tone('sine', 380 + arg * 38, t, 0.08, 0.07, 0.004, out);
+      break;
+    case 'charge':
+      tone('triangle', 180, t, arg || 3, 0.05, 0.3, out, 1100);
+      break;
+    case 'flash':
+      tone('sine', 1400, t, 0.4, 0.09, 0.002, out, 2800);
+      tone('triangle', n(48), t, 0.6, 0.12, 0.002, out);
+      break;
+    case 'fanfare': {
+      const chords = [[60, 64, 67], [65, 69, 72], [67, 71, 74]];
+      chords.forEach((ch, i) => ch.forEach((m) => tone('triangle', n(m), t + i * 0.32, 0.4, 0.06, 0.01, out)));
+      [72, 76, 79, 84].forEach((m) => tone('triangle', n(m), t + 0.96, 1.6, 0.06, 0.02, out));
+      [79, 81, 83, 84, 88].forEach((m, i) => tone('square', n(m), t + i * 0.16, i === 4 ? 1.3 : 0.18, 0.025, 0.005, out));
+      tone('sine', n(36), t + 0.96, 1.8, 0.12, 0.02, out);
+      break;
+    }
+  }
 }

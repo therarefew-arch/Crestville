@@ -8,7 +8,7 @@ function freshState() {
   return {
     name: '', coins: 60, berries: 2, crests: 0,
     roster: [], team: [null, null, null, null, null], nextUid: 1,
-    eggCost: 100, trophies: 0, rivals: null, speed: 1, dust: 0, pity: 0, seen: [], visited: ['town'], lastTown: 'town', music: true, worldSeed: newSeed(),
+    eggCost: 100, trophies: 0, rivals: null, speed: 1, dust: 0, pity: 0, seen: [], visited: ['town'], lastTown: 'town', music: true, sfx: true, worldSeed: newSeed(),
     map: 'town', x: MAPS.town.start[0], y: MAPS.town.start[1], dir: 'down', beaten: {},
   };
 }
@@ -114,9 +114,15 @@ function rollCreature(id, lvl, { good = false } = {}) {
 // Fixed, average creature for trainers and bosses.
 function plainCreature(id, lvl) { return { id, lvl, xp: 0, roll: { a: 0.5, h: 0.5 }, traits: [], ab: 0, skills: defaultSkills(id, lvl), shiny: false }; }
 
+// Level-ups and evolutions are collected, then celebrated together after a battle.
+const levelUps = new Map(); // uid -> { from, before: stats, learned: [] }
+const evoQueue = [];
 function announceGrowth(c, oldLvl) {
-  const before = evoStage(oldLvl), after = evoStage(c.lvl);
-  if (after > before) toast(`✨ ${SPECIES_BY_ID[c.id].names[before]} grew into <b>${nameOf(c)}</b>!`);
+  if (c.lvl <= oldLvl) return;
+  const prev = levelUps.get(c.uid);
+  levelUps.set(c.uid, prev || { from: oldLvl, before: creatureStats({ ...c, lvl: oldLvl }), learned: [] });
+  const sb = evoStage(oldLvl), sa = evoStage(c.lvl);
+  if (sa > sb) evoQueue.push({ uid: c.uid, fromStage: sb, toStage: sa, fromLvl: oldLvl });
 }
 function addXp(c, xp) {
   if (c.lvl >= MAX_LEVEL) return 0;
@@ -141,10 +147,107 @@ function afterLevelUp(c, old) {
   announceGrowth(c, old);
   for (const [lvl, key] of learnsetFor(c.id, c.ab || 0)) {
     if (lvl <= old || lvl > c.lvl || c.skills.includes(key)) continue;
-    if (c.skills.length < MAX_SKILLS) { c.skills.push(key); toast(`${esc(nameOf(c))} learned <b>${ABILITY[key].name}</b>!`); }
+    if (c.skills.length < MAX_SKILLS) { c.skills.push(key); const rec = levelUps.get(c.uid); if (rec) rec.learned.push(key); else toast(`${esc(nameOf(c))} learned <b>${ABILITY[key].name}</b>!`); }
     else learnQueue.push({ uid: c.uid, key });
   }
 }
+let celebrating = false;
+async function celebrate() {
+  if (celebrating) return;
+  celebrating = true;
+  if (levelUps.size) await showLevelUps();
+  while (evoQueue.length) {
+    const e = evoQueue.shift();
+    const c = byUid(e.uid);
+    if (c) await playEvolution(c, e);
+  }
+  celebrating = false;
+  await processLearnQueue();
+}
+
+function confettiHTML(n = 26) {
+  const cols = ['#e88c7d', '#f6d36b', '#9ccfdc', '#a8cf8e', '#bfaed8', '#f3b6c8'];
+  return `<div class="confetti">${Array.from({ length: n }, (_, i) => `<i style="left:${Math.random() * 100}%;background:${cols[i % cols.length]};animation-delay:${(Math.random() * 0.5).toFixed(2)}s;--r:${Math.round(Math.random() * 720 - 360)}deg;--x:${Math.round(Math.random() * 80 - 40)}px"></i>`).join('')}</div>`;
+}
+
+function showLevelUps() {
+  const entries = [...levelUps.entries()].map(([uid, rec]) => ({ c: byUid(uid), ...rec })).filter((e) => e.c);
+  levelUps.clear();
+  if (!entries.length) return Promise.resolve();
+  sfx('levelup');
+  const cards = entries.map((e, i) => {
+    const c = e.c, sp = SPECIES_BY_ID[c.id];
+    const evolving = evoQueue.some((q) => q.uid === c.uid);
+    const shownStage = evolving ? evoStage(e.from) : evoStage(c.lvl);
+    const now = creatureStats(c);
+    const da = now.atk - e.before.atk, dh = now.hp - e.before.hp;
+    const d = 0.25 + i * 0.18;
+    return `<div class="lvl-card" style="animation-delay:${d}s">
+      <div class="lvl-art" style="animation-delay:${d + 0.2}s">${creatureSVG(sp, shownStage, { shiny: c.shiny })}</div>
+      <div class="lvl-info">
+        <b>${esc(sp.names[shownStage])}</b>
+        <div class="lvl-num">Lv ${e.from} <span>→</span> <em style="animation-delay:${d + 0.35}s">${c.lvl}</em></div>
+        <div class="lvl-gains">${da ? `<span class="gain atk" style="animation-delay:${d + 0.5}s">+${da} ATK</span>` : ''}${dh ? `<span class="gain hp" style="animation-delay:${d + 0.6}s">+${dh} HP</span>` : ''}
+          ${e.learned.map((k, j) => `<span class="gain skill" style="animation-delay:${d + 0.7 + j * 0.1}s">New skill: ${ABILITY[k].name}</span>`).join('')}</div>
+        ${evolving ? `<div class="lvl-evo" style="animation-delay:${d + 0.8}s">Something is happening…</div>` : ''}
+      </div></div>`;
+  }).join('');
+  return new Promise((resolve) => {
+    const sheet = openModal(`<div class="lvl-wrap">${confettiHTML()}
+      <h2 class="center lvl-title">Level up!</h2>
+      <div class="lvl-list">${cards}</div>
+      <button class="btn primary block" data-close style="margin-top:14px">Yay!</button></div>`);
+    entries.forEach((e, i) => setTimeout(() => sfx('pop', i * 2), 450 + i * 180));
+    sheet.querySelector('[data-close]').onclick = () => { closeModal(); resolve(); };
+  });
+}
+
+// The big moment: the screen darkens, the creature flickers between forms faster and
+// faster, then a flash, a burst of stars and its new form.
+async function playEvolution(c, e) {
+  const sp = SPECIES_BY_ID[c.id];
+  const ov = $('#evo'), oldEl = $('#evo-old'), newEl = $('#evo-new');
+  const before = creatureStats({ ...c, lvl: e.fromLvl }), after = creatureStats(c);
+  oldEl.innerHTML = creatureSVG(sp, e.fromStage, { shiny: c.shiny });
+  newEl.innerHTML = creatureSVG(sp, e.toStage, { shiny: c.shiny });
+  $('#evo-burst').innerHTML = '';
+  $('#evo-foot').innerHTML = '';
+  $('#evo-text').innerHTML = `What's this? <b>${esc(sp.names[e.fromStage])}</b> is evolving!`;
+  ov.className = 'evo show';
+  busy = true; syncPause();
+  musicDuck(true);
+  sfx('evostart');
+  await sleep(1300);
+  ov.classList.add('glowing');
+  sfx('charge', 3.2);
+  let delay = 420, i = 0;
+  while (delay > 45) {
+    ov.classList.toggle('swap');
+    sfx('tick', i++);
+    await sleep(delay);
+    delay *= 0.84;
+  }
+  ov.classList.remove('swap', 'glowing');
+  ov.classList.add('done');
+  $('#evo-flash').classList.add('go');
+  sfx('flash');
+  $('#evo-burst').innerHTML = Array.from({ length: 30 }, (_, k) => `<i style="--a:${(k / 30) * 360}deg;--d:${110 + Math.random() * 90}px;animation-delay:${(Math.random() * 0.15).toFixed(2)}s"></i>`).join('');
+  await sleep(250);
+  sfx('fanfare');
+  $('#evo-text').innerHTML = `Congratulations! <b>${esc(sp.names[e.fromStage])}</b> evolved into <b class="evo-name">${esc(sp.names[e.toStage])}</b>!
+    <div class="evo-stats"><span>ATK ${before.atk} → <b>${after.atk}</b></span><span>HP ${before.hp} → <b>${after.hp}</b></span></div>`;
+  await sleep(900);
+  await new Promise((resolve) => {
+    $('#evo-foot').innerHTML = '<button class="btn primary">Amazing!</button>';
+    $('#evo-foot button').onclick = resolve;
+  });
+  ov.className = 'evo hidden';
+  $('#evo-flash').classList.remove('go');
+  musicDuck(false);
+  busy = false; syncPause();
+  save(); refreshPanel();
+}
+
 let learning = false;
 async function processLearnQueue() {
   if (learning) return;
@@ -446,11 +549,11 @@ function battleFooter(html, buttons) {
     foot.querySelectorAll('[data-i]').forEach((btn) => (btn.onclick = () => resolve(buttons[Number(btn.dataset.i)].key)));
   });
 }
-function closeBattle() {
+function closeBattle(celebrateNow = true) {
   $('#battle').classList.add('hidden');
   musicPlay((World.map && World.map.music) || 'meadow');
   busy = false; syncPause();
-  if (learnQueue.length) setTimeout(processLearnQueue, 50);
+  if (celebrateNow) setTimeout(celebrate, 50);
 }
 
 // ---------- encounters ----------
@@ -516,8 +619,9 @@ async function wildEncounter() {
     await battleFooter(`<div class="result-banner">A tie!</div><p class="hint center">The wild creatures wandered off.</p>${awardKills(lastReport)}`, [{ key: 'ok', label: 'Continue', cls: 'primary' }]);
   } else {
     await battleFooter(`<div class="result-banner lose">Your team is worn out</div><p class="hint center">Time to rest at home.</p>${awardKills(lastReport)}`, [{ key: 'ok', label: 'Go home', cls: 'primary' }]);
-    closeBattle();
-    return goHome();
+    closeBattle(false);
+    await goHome();
+    return celebrate();
   }
   closeBattle();
 }
@@ -568,16 +672,18 @@ async function trainerBattle(npc) {
     const xpRows = awardKills(lastReport, 2);
     const coins = giveCoins(tr.coins);
     await battleFooter(`<div class="result-banner win">You beat ${esc(npc.name)}!</div><p class="hint center">+${coins} coins · Trainer battles give double XP</p>${xpRows}`, [{ key: 'ok', label: 'Continue', cls: 'primary' }]);
-    closeBattle();
+    closeBattle(false);
     await say(npc.name, tr.after);
-    if (tr.crest != null && S.crests < tr.crest + 1) { S.crests = tr.crest + 1; save(); updateHud(); showCrest(tr.crest); }
+    if (tr.crest != null && S.crests < tr.crest + 1) { S.crests = tr.crest + 1; save(); updateHud(); await showCrest(tr.crest); }
+    await celebrate();
   } else if (result === 'draw') {
     await battleFooter(`<div class="result-banner">A tie!</div><p class="hint center">Talk to ${esc(npc.name)} again for a rematch.</p>${awardKills(lastReport, 2)}`, [{ key: 'ok', label: 'Continue', cls: 'primary' }]);
     closeBattle();
   } else {
     await battleFooter(`<div class="result-banner lose">${esc(npc.name)} won this time</div><p class="hint center">Train up, try a new lineup, and come back.</p>${awardKills(lastReport, 2)}`, [{ key: 'ok', label: 'Go home', cls: 'primary' }]);
-    closeBattle();
+    closeBattle(false);
     await goHome();
+    await celebrate();
   }
 }
 
@@ -592,12 +698,13 @@ async function goHome() {
 }
 
 function showCrest(r) {
+  sfx('fanfare');
   const sheet = openModal(`<div class="center">
     <h2>You earned the ${TOWN_CRESTS[r].name}!</h2>
     <div class="crest-big">${crestSVG(r, true)}</div>
     <p class="hint">${S.crests}/${TOWN_CRESTS.length} crests. ${r < TOWN_CRESTS.length - 1 ? 'The road to the next town is open, and Meadow Eggs may hold new kinds of creatures.' : 'You collected every crest. Crestville will tell stories about you!'}</p>
     <button class="btn primary block" data-close style="margin-top:14px">Hooray!</button></div>`);
-  sheet.querySelector('[data-close]').onclick = closeModal;
+  return new Promise((resolve) => (sheet.querySelector('[data-close]').onclick = () => { closeModal(); resolve(); }));
 }
 
 // ---------- world events ----------
@@ -836,7 +943,7 @@ function showCreature(uid, confirmRelease = false) {
     if (c.lvl >= MAX_LEVEL) return;
     setLevel(c, c.lvl + 1);
     save(); updateHud(); refreshPanel();
-    if (learnQueue.length) { processLearnQueue().then(() => showCreature(uid)); } else showCreature(uid);
+    if (levelUps.size || evoQueue.length || learnQueue.length) { closeModal(); celebrate().then(() => showCreature(uid)); } else showCreature(uid);
   });
   on('merge', () => { if (twins.length) pickMergeDonor(c, twins); });
   sheet.querySelectorAll('[data-teach]').forEach((b) => (b.onclick = () => {
@@ -924,7 +1031,7 @@ function doMerge(c, donor, gift) {
   if (di >= 0) S.team[di] = S.team.includes(c.uid) ? null : c.uid;
   save();
   const sheet = openModal(revealHTML(c, 'Merged!', '') + '<button class="btn primary block" data-close style="margin-top:12px">Great!</button>');
-  sheet.querySelector('[data-close]').onclick = () => { closeModal(); refreshPanel(); processLearnQueue(); };
+  sheet.querySelector('[data-close]').onclick = () => { closeModal(); refreshPanel(); celebrate(); };
   refreshPanel();
 }
 
@@ -1155,13 +1262,15 @@ function renderSettings(body) {
     <div class="card settings">
       <div class="set-row"><div><b>Music</b><small>Each town has its own song.</small></div>
         <button class="btn small ${S.music ? 'primary' : ''}" id="set-music">${S.music ? 'On' : 'Off'}</button></div>
+      <div class="set-row"><div><b>Sound effects</b><small>Level-ups, evolutions and more.</small></div>
+        <button class="btn small ${S.sfx !== false ? 'primary' : ''}" id="set-sfx">${S.sfx !== false ? 'On' : 'Off'}</button></div>
       <div class="set-row"><div><b>Battle speed</b><small>How fast battles play out.</small></div>
         <div class="seg">${[1, 2, 3].map((n) => `<button class="${S.speed === n ? 'on' : ''}" data-speed="${n}">${n}×</button>`).join('')}</div></div>
       <div class="set-row"><div><b>Save game</b><small>The game also saves by itself as you play.</small></div>
         <button class="btn small primary" id="set-save">Save</button></div>
     </div>
     <h3>Controls</h3>
-    <div class="card"><p class="hint">Drag the stick to walk. Push it all the way out to run. <b>A</b> talks, reads signs and opens doors.</p></div>
+    <div class="card"><p class="hint">Drag the stick to walk. Push it all the way out to jog. <b>A</b> talks, reads signs and opens doors.</p></div>
     <h3>Start over</h3>
     <div class="card">
       <p class="hint">Begin a brand-new game with a newly shaped world. Your creatures and progress will be gone.</p>
@@ -1169,6 +1278,7 @@ function renderSettings(body) {
     </div>
     <p class="hint center" style="margin-top:14px">Crestville ${VERSION}</p>`;
   $('#set-music').onclick = () => { S.music = !S.music; save(); musicSetEnabled(S.music); refreshPanel(); };
+  $('#set-sfx').onclick = () => { S.sfx = S.sfx === false; Sfx.enabled = S.sfx; save(); if (S.sfx) sfx('pop'); refreshPanel(); };
   body.querySelectorAll('[data-speed]').forEach((b) => (b.onclick = () => { S.speed = Number(b.dataset.speed); save(); refreshPanel(); }));
   $('#set-save').onclick = () => { save(); toast('Game saved!'); };
   $('#set-reset').onclick = () => {
@@ -1244,6 +1354,7 @@ function init() {
   document.querySelectorAll('[data-icon]').forEach((el) => (el.innerHTML = ICONS[el.dataset.icon]));
   $('#version').textContent = VERSION;
   Music.enabled = S.music !== false;
+  Sfx.enabled = S.sfx !== false;
   setupInput();
   buildWorld(S.worldSeed);
   save();

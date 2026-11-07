@@ -2,6 +2,16 @@
 
 The version shows at the bottom of the game screen. Each update adds 1.
 
+## v0.0.05
+- Gentler walking speed. Pushing the stick all the way jogs a little faster.
+- Level-ups get a celebration card: confetti, hopping creatures, the new level popping in,
+  attack and HP gains, new skills, and a jingle.
+- Evolution is a big event: the screen darkens with spinning light rays, the creature flickers
+  between forms faster and faster with rising sound, then a white flash, a burst of stars, a
+  fanfare and its new stats. Music dips during the moment.
+- Evolved forms look more different: bigger, a determined look, and a glowing aura on final forms.
+- Crest wins play a fanfare. New Sound effects toggle in Settings.
+
 ## v0.0.04
 - Settings button at the top: music on/off, battle speed, save, and start a new game.
 - Right Joy-Con is now a small Team button and a big A button.

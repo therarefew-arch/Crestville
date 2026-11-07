@@ -44,12 +44,16 @@ function creatureSVG(sp, stage = 0, opts = {}) {
   if (sp.body === 'tall') { w -= 3; top -= 5; }
   if (sp.body === 'wide') { w += 4; top += 3; }
   if (sp.body === 'tiny') { w -= 6; top += 10; }
+  // Evolved forms are bigger.
+  if (stage >= 1) { w += 3; top -= 3; }
+  if (stage >= 2) { w += 2; top -= 2; }
   const pear = sp.body === 'pear';
   const L = 50 - w, R = 50 + w;
   const S = `stroke="${INK}" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"`;
   const back = [], front = [], head = [];
 
   // ---- behind the body ----
+  if (stage >= 2) back.push(`<circle cx="50" cy="${top + 30}" r="${w + 18}" fill="${light}" opacity=".45"/><circle cx="50" cy="${top + 30}" r="${w + 10}" fill="${light}" opacity=".35"/>`);
   if (ex.has('wings')) {
     back.push(`<path d="M${L + 4} ${top + 26} C ${L - 20} ${top + 2} ${L - 22} ${top + 42} ${L + 2} ${top + 44} Z" fill="${light}" ${S}/>`);
     back.push(`<path d="M${R - 4} ${top + 26} C ${R + 20} ${top + 2} ${R + 22} ${top + 42} ${R - 2} ${top + 44} Z" fill="${light}" ${S}/>`);
@@ -145,6 +149,8 @@ function creatureSVG(sp, stage = 0, opts = {}) {
   face += `<ellipse cx="42" cy="${ey}" rx="4.6" ry="5.6" fill="#3b2c24"/><circle cx="43.6" cy="${ey - 2}" r="1.7" fill="#fff"/>
     <ellipse cx="58" cy="${ey}" rx="4.6" ry="5.6" fill="#3b2c24"/><circle cx="59.6" cy="${ey - 2}" r="1.7" fill="#fff"/>
     <ellipse cx="35" cy="${ey + 8}" rx="5" ry="3" fill="#f39c94" opacity=".55"/><ellipse cx="65" cy="${ey + 8}" rx="5" ry="3" fill="#f39c94" opacity=".55"/>`;
+  // Evolved forms look a little more determined.
+  if (stage >= 1) face += `<path d="M38 ${ey - 9} Q42 ${ey - 9.5} 46 ${ey - 8}" fill="none" stroke="${INK}" stroke-width="2" stroke-linecap="round"/><path d="M62 ${ey - 9} Q58 ${ey - 9.5} 54 ${ey - 8}" fill="none" stroke="${INK}" stroke-width="2" stroke-linecap="round"/>`;
   if (ex.has('beak')) face += `<path d="M45 ${ey + 6} L55 ${ey + 6} L50 ${ey + 13} Z" fill="#f2b45c" ${S}/>`;
   else if (ex.has('bigmouth')) face += `<path d="M40 ${ey + 8} Q50 ${ey + 17} 60 ${ey + 8}" fill="#e88c7d" ${S}/>`;
   else face += `<path d="M46 ${ey + 8} Q50 ${ey + 12} 54 ${ey + 8}" fill="none" stroke="${INK}" stroke-width="2.2" stroke-linecap="round"/>`;
