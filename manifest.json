@@ -1,0 +1,10 @@
+{
+  "name": "Crestville",
+  "short_name": "Crestville",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fbf3e3",
+  "theme_color": "#fbf3e3",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
