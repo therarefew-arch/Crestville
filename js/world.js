@@ -19,11 +19,11 @@ function hash(x, y) {
   return ((h ^ (h >> 16)) >>> 0) / 4294967295;
 }
 
-function creatureImage(id, stage) {
-  const key = id + stage;
+function creatureImage(id, stage, shiny = false) {
+  const key = id + stage + (shiny ? 's' : '');
   if (!World.imgCache[key]) {
     const img = new Image();
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(creatureSVG(SPECIES_BY_ID[id], stage));
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(creatureSVG(SPECIES_BY_ID[id], stage, { shiny }));
     World.imgCache[key] = img;
   }
   return World.imgCache[key];
@@ -359,9 +359,9 @@ function worldDraw() {
     const [fx, fy] = pos(World.follower);
     const same = World.follower.x === World.player.x && World.follower.y === World.player.y && !World.player.moving;
     if (!same || World.player.t < 1) {
-      const img = creatureImage(lead.id, evoStage(lead.lvl));
+      const img = creatureImage(lead.id, evoStage(lead.lvl), lead.shiny);
       const hop = Math.abs(Math.sin(World.time * 5)) * 2;
-      items.push({ y: fy - 0.01, draw: () => img.complete && g.drawImage(img, fx * T + T * 0.08, fy * T + T * 0.02 - hop, T * 0.84, T * 0.84 * 108 / 112), tile: [Math.round(fx), Math.round(fy)] });
+      items.push({ y: fy - 0.01, draw: () => img.complete && g.drawImage(img, fx * T + T * 0.06, fy * T - hop, T * 0.88, T * 0.88 * 112 / 116), tile: [Math.round(fx), Math.round(fy)] });
     }
   }
   items.push({ y: py, draw: () => drawPerson(g, px * T + T / 2, py * T + T * 0.45, LOOKS.player, World.player.dir, World.player.moving ? World.player.walk : 0, T), tile: [World.player.x, World.player.y] });

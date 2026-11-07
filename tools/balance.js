@@ -1,39 +1,58 @@
-// Checks map data and rough battle balance. Run: node tools/balance.js
+// Checks map/creature data and rough battle balance. Run: node tools/balance.js
 const fs = require('fs'), vm = require('vm');
 const ctx = { console, Math };
 vm.createContext(ctx);
 for (const f of ['js/data.js', 'js/battle.js', 'js/maps.js']) vm.runInContext(fs.readFileSync(f, 'utf8'), ctx);
 const run = (code) => vm.runInContext(code, ctx);
+const maps = run('MAPS'), SPECIES = run('SPECIES'), ABILITY = run('ABILITY');
 
-// Map checks
-const maps = run('MAPS');
+// Data checks
+const blocked = 'T~#BS';
 for (const [id, m] of Object.entries(maps)) {
   const w = m.tiles[0].length;
-  m.tiles.forEach((r, i) => { if (r.length !== w) console.log(`!! ${id} row ${i} has length ${r.length}, expected ${w}`); });
+  m.tiles.forEach((r, i) => { if (r.length !== w) console.log(`!! ${id} row ${i} length ${r.length}, expected ${w}`); });
   const at = (x, y) => (m.tiles[y] || '')[x];
-  for (const n of m.npcs) if ('T~#BS'.includes(at(n.x, n.y))) console.log(`!! ${id} npc ${n.id} on blocked tile`);
-  for (const e of m.exits) { const t = maps[e.to]; if ('T~#BS'.includes(t.tiles[e.ty][e.tx])) console.log(`!! ${id} exit lands on blocked tile in ${e.to}`); }
-  for (const b of m.buildings) if (at(b.door[0], b.door[1] + 1) === undefined || 'T~#BS'.includes(at(b.door[0], b.door[1] + 1))) console.log(`!! ${id} door ${b.label} not reachable`);
+  for (const n of m.npcs) if (blocked.includes(at(n.x, n.y))) console.log(`!! ${id} npc ${n.id} on blocked tile`);
+  for (const e of m.exits) if (blocked.includes(maps[e.to].tiles[e.ty][e.tx])) console.log(`!! ${id} exit lands on blocked tile`);
+  for (const n of m.npcs) for (const [sid] of (n.trainer ? n.trainer.team : [])) if (!SPECIES.find((s) => s.id === sid)) console.log(`!! unknown species ${sid}`);
 }
-console.log('maps ok');
+const ids = new Set();
+for (const s of SPECIES) {
+  if (ids.has(s.id)) console.log('!! duplicate', s.id);
+  ids.add(s.id);
+  if (s.names.length !== 3) console.log('!! names', s.id);
+  for (const a of s.abilities) if (!ABILITY[a]) console.log('!! unknown ability', a, 'on', s.id);
+}
+console.log(`data ok: ${SPECIES.length} creatures, ${Object.keys(ABILITY).length} abilities`);
 
-async function rate(team, enemyFn, n = 300) {
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const mk = (id, lvl) => ({ id, lvl, roll: { a: Math.random(), h: Math.random() }, traits: [], ab: Math.floor(Math.random() * 2) });
+const T = (lvl, list) => list.map((id) => mk(id, lvl));
+async function rate(teamFn, enemyFn, n = 300) {
   let w = 0;
-  for (let i = 0; i < n; i++) if ((await run('runBattle')(team, enemyFn())) === 'win') w++;
+  for (let i = 0; i < n; i++) if ((await run('runBattle')(teamFn(), enemyFn())) === 'win') w++;
   return Math.round((100 * w) / n) + '%';
 }
-const pick = (a) => a[Math.floor(Math.random() * a.length)];
-const T = (lvl, ids) => ids.map((id) => ({ id, lvl }));
+const wild = (m, size) => () => {
+  const w = maps[m].wild, pool = SPECIES.filter((s) => w.regions.includes(s.region));
+  return Array.from({ length: 1 + Math.floor(Math.random() * Math.min(w.pack, size)) }, () => mk(pick(pool).id, w.min + Math.floor(Math.random() * (w.max - w.min + 1))));
+};
+const tr = (m, id) => () => maps[m].npcs.find((n) => n.id === id).trainer.team.map(([s, l]) => ({ id: s, lvl: l, roll: { a: 0.5, h: 0.5 }, traits: [], ab: 0 }));
 (async () => {
-  const route = maps.route.wild, grove = maps.grove.wild;
-  const wild = (w, size = 5) => () => Array.from({ length: 1 + Math.floor(Math.random() * Math.min(w.pack, size)) }, () => ({ id: pick(w.pool), lvl: w.min + Math.floor(Math.random() * (w.max - w.min + 1)) }));
-  for (const s of ['mossbun', 'puddlepup', 'emberkit']) console.log(`starter ${s} Lv5 vs route wild:`, await rate(T(5, [s]), wild(route, 1)));
-  console.log('2x Lv4 vs route wild:', await rate(T(4, ['emberkit', 'mossbun']), wild(route)));
-  const tr = (id) => () => maps[id === 'rowan' || id === 'ivy' ? 'grove' : 'route'].npcs.find((n) => n.id === id).trainer.team.map(([id, lvl]) => ({ id, lvl }));
-  console.log('3x Lv4 vs Daisy:', await rate(T(4, ['mossbun', 'emberkit', 'driplet']), tr('daisy')));
-  console.log('3x Lv5 vs Remy:', await rate(T(5, ['mossbun', 'emberkit', 'driplet']), tr('remy')));
-  console.log('4x Lv7 vs grove wild:', await rate(T(7, ['mossbun', 'emberkit', 'driplet', 'thistlet']), wild(grove)));
-  console.log('4x Lv7 vs Ivy:', await rate(T(7, ['mossbun', 'emberkit', 'driplet', 'thistlet']), tr('ivy')));
-  console.log('5x Lv9 vs Rowan:', await rate(T(9, ['mossbun', 'puddlepup', 'emberkit', 'thistlet', 'fernwhisk']), tr('rowan')));
-  console.log('5x Lv11 vs Rowan:', await rate(T(11, ['mossbun', 'puddlepup', 'emberkit', 'thistlet', 'fernwhisk']), tr('rowan')));
+  for (const s of ['mossbun', 'puddlepup', 'emberkit']) console.log(`starter ${s} Lv5 vs route wild:`, await rate(() => T(5, [s]), wild('route', 1)));
+  console.log('3x Lv4 vs Daisy:', await rate(() => T(4, ['mossbun', 'emberkit', 'driplet']), tr('route', 'daisy')));
+  console.log('3x Lv6 vs Remy:', await rate(() => T(6, ['mossbun', 'emberkit', 'driplet']), tr('route', 'remy')));
+  console.log('4x Lv7 vs grove wild:', await rate(() => T(7, ['mossbun', 'emberkit', 'driplet', 'thistlet']), wild('grove', 4)));
+  console.log('4x Lv8 vs Ivy:', await rate(() => T(8, ['mossbun', 'emberkit', 'driplet', 'thistlet']), tr('grove', 'ivy')));
+  console.log('5x Lv11 vs Rowan:', await rate(() => T(11, ['mossbun', 'puddlepup', 'emberkit', 'thistlet', 'fernwhisk']), tr('grove', 'rowan')));
+  // Each species alone at Lv10 vs every other species at Lv10: win rate, to spot outliers.
+  const scores = [];
+  for (const a of SPECIES) {
+    let w = 0, n = 0;
+    for (const b of SPECIES) for (let i = 0; i < 4; i++) { n++; if ((await run('runBattle')([mk(a.id, 10)], [mk(b.id, 10)])) === 'win') w++; }
+    scores.push([a.id, Math.round((100 * w) / n)]);
+  }
+  scores.sort((x, y) => y[1] - x[1]);
+  console.log('1v1 strongest:', scores.slice(0, 5).map((s) => s.join(' ')).join(', '));
+  console.log('1v1 weakest:', scores.slice(-5).map((s) => s.join(' ')).join(', '));
 })();

@@ -6,16 +6,28 @@ function freshState() {
   return {
     name: '', coins: 60, berries: 2, crests: 0,
     roster: [], team: [null, null, null, null, null], nextUid: 1,
-    eggCost: 100, trophies: 0, rivals: null, speed: 1,
+    eggCost: 100, trophies: 0, rivals: null, speed: 1, dust: 0, pity: 0, seen: [],
     map: 'town', x: MAPS.town.start[0], y: MAPS.town.start[1], dir: 'down', beaten: {},
   };
 }
 function load() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    if (raw) return Object.assign(freshState(), JSON.parse(raw));
+    if (raw) return migrate(Object.assign(freshState(), JSON.parse(raw)));
   } catch (e) { /* storage unavailable: start fresh */ }
   return freshState();
+}
+// Older saves: give creatures random traits, average stars and their first ability.
+function migrate(st) {
+  for (const c of st.roster) {
+    if (!c.roll) c.roll = { a: 0.5, h: 0.5 };
+    if (!c.traits) c.traits = rollTraits(SPECIES_BY_ID[c.id]);
+    if (c.ab == null) c.ab = 0;
+    if (c.shiny == null) c.shiny = false;
+  }
+  st.roster = st.roster.filter((c) => SPECIES_BY_ID[c.id]);
+  st.team = st.team.map((u) => (st.roster.some((c) => c.uid === u) ? u : null));
+  return st;
 }
 function save() {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* ignore */ }
@@ -57,9 +69,43 @@ function elChip(sp) {
 function byUid(uid) { return S.roster.find((c) => c.uid === uid); }
 function nameOf(c) { return SPECIES_BY_ID[c.id].names[evoStage(c.lvl)]; }
 function xpNeed(lvl) { return 8 + lvl * 6; }
-function teamEntries() { return S.team.map((uid) => { const c = uid != null ? byUid(uid) : null; return c ? { id: c.id, lvl: c.lvl } : null; }); }
+function teamEntries() { return S.team.map((uid) => (uid != null ? byUid(uid) || null : null)); }
 function teamSize() { return S.team.filter((u) => u != null).length; }
-function leadCreature() { const c = S.team.map((u) => u != null && byUid(u)).find(Boolean); return c || null; }
+function leadCreature() { return teamEntries().find(Boolean) || null; }
+function art(c, sp = SPECIES_BY_ID[c.id]) { return creatureSVG(sp, evoStage(c.lvl), { shiny: c.shiny }); }
+function starText(c) { const n = stars(c.roll); return '★'.repeat(n) + '<span class="dim">' + '★'.repeat(5 - n) + '</span>'; }
+
+function weightedPick(items, weightOf) {
+  let roll = Math.random() * items.reduce((s, x) => s + weightOf(x), 0);
+  for (const x of items) { roll -= weightOf(x); if (roll <= 0) return x; }
+  return items[items.length - 1];
+}
+
+function rollTraits(sp, count) {
+  if (count == null) count = Math.min(3, RARITY[sp.rarity].traits + (Math.random() < 0.15 ? 1 : 0));
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const options = Object.keys(TRAITS).filter((k) => !out.includes(k) && !EXCLUSIVE_TRAITS.some((g) => g.includes(k) && g.some((o) => out.includes(o))));
+    out.push(weightedPick(options, (k) => TRAITS[k].weight));
+  }
+  return out;
+}
+
+// A brand-new creature with random stars, traits, ability and a small shiny chance.
+function rollCreature(id, lvl, { good = false } = {}) {
+  const sp = SPECIES_BY_ID[id];
+  const r = () => (good ? 0.65 + Math.random() * 0.35 : Math.random());
+  const extra = good && RARITY[sp.rarity].traits < 3 ? 1 : 0;
+  return {
+    id, lvl, xp: 0,
+    roll: { a: Math.round(r() * 100) / 100, h: Math.round(r() * 100) / 100 },
+    traits: rollTraits(sp, Math.min(3, RARITY[sp.rarity].traits + extra + (Math.random() < 0.15 ? 1 : 0))),
+    ab: Math.floor(Math.random() * sp.abilities.length),
+    shiny: Math.random() < 1 / 128,
+  };
+}
+// Fixed, average creature for trainers and bosses.
+function plainCreature(id, lvl) { return { id, lvl, xp: 0, roll: { a: 0.5, h: 0.5 }, traits: [], ab: 0, shiny: false }; }
 
 function announceGrowth(c, oldLvl) {
   const before = evoStage(oldLvl), after = evoStage(c.lvl);
@@ -67,27 +113,51 @@ function announceGrowth(c, oldLvl) {
 }
 function addXp(c, xp) {
   const old = c.lvl;
-  c.xp += xp;
+  c.xp += Math.round(xp * (c.traits.includes('scholar') ? 1.3 : 1));
   while (c.xp >= xpNeed(c.lvl)) { c.xp -= xpNeed(c.lvl); c.lvl++; }
   announceGrowth(c, old);
   return c.lvl - old;
 }
-function giveCreature(id, lvl = 1) {
-  const c = { uid: S.nextUid++, id, lvl, xp: 0 };
+function giveCreature(c) {
+  c = { ...c, uid: S.nextUid++, xp: 0 };
   S.roster.push(c);
   const empty = S.team.indexOf(null);
   if (empty >= 0) S.team[empty] = c.uid;
   return c;
 }
+function coinBonus() { return teamEntries().some((c) => c && c.traits.includes('lucky')) ? 1.25 : 1; }
 function rewardTeam(xp, coins) {
+  coins = Math.round(coins * coinBonus());
   S.coins += coins;
   const grew = [];
-  for (const uid of S.team) {
-    const c = uid != null && byUid(uid);
-    if (c && addXp(c, xp) > 0) grew.push(c);
-  }
+  for (const c of teamEntries()) if (c && addXp(c, xp) > 0) grew.push(c);
   save(); updateHud();
-  return grew;
+  return { grew, coins };
+}
+function dustValue(c) { return 5 * stars(c.roll) + 8 * c.traits.length + (c.shiny ? 100 : 0); }
+
+function traitChips(c, withDesc = false) {
+  if (!c.traits.length) return '<span class="hint">No traits</span>';
+  return c.traits.map((k) => `<span class="chip trait t-${TRAITS[k].weight <= 5 ? 'rare' : 'common'}" title="${esc(TRAITS[k].desc)}">${TRAITS[k].name}${withDesc ? `<small>${TRAITS[k].desc}</small>` : ''}</span>`).join('');
+}
+
+// Card shown when a creature joins: stars and traits pop in one by one.
+function revealHTML(c, title, note) {
+  const sp = SPECIES_BY_ID[c.id];
+  const key = abilityKey(c);
+  const n = stars(c.roll);
+  return `<div class="center reveal">
+    <h2>${title}</h2>
+    ${c.shiny ? '<div class="shiny-banner">✦ Shiny! ✦</div>' : ''}
+    <div class="big-art pop">${art(c)}</div>
+    <h2>${esc(nameOf(c))} <span class="hint">Lv ${c.lvl}</span></h2>
+    <div class="synergies" style="justify-content:center">${elChip(sp)}<span class="chip">${ROLES[sp.role].name}</span>
+      <span class="chip" style="color:${RARITY[sp.rarity].color}">${RARITY[sp.rarity].name}</span></div>
+    <div class="stars-big">${[0, 1, 2, 3, 4].map((i) => `<span class="${i < n ? 'on' : 'off'}" style="animation-delay:${0.35 + i * 0.12}s">★</span>`).join('')}</div>
+    <div class="trait-list">${c.traits.map((k, i) => `<div class="trait-row" style="animation-delay:${1 + i * 0.25}s"><b>${TRAITS[k].name}</b> ${TRAITS[k].desc}</div>`).join('')}</div>
+    <div class="trait-row ability-row" style="animation-delay:${1.1 + c.traits.length * 0.25}s"><b>${ABILITY[key].name}</b> ${abilityText(key, c.lvl)}</div>
+    ${note ? `<p class="hint" style="margin-top:8px">${note}</p>` : ''}
+  </div>`;
 }
 
 // ---------- HUD ----------
@@ -145,14 +215,23 @@ function closePanel() { $('#panel').classList.add('hidden'); panelRender = null;
 const BUI = { skip: false };
 function bwait(ms) { return BUI.skip ? Promise.resolve() : sleep(ms / S.speed); }
 
+let laneObserver = null;
 function makeBattleUI() {
   const lane = $('#lane');
   const els = new Map();
-  let slot = 60;
+  let slot = 60, lastB = null;
   const el = (u) => els.get(u.key);
+  if (laneObserver) laneObserver.disconnect();
+  laneObserver = new ResizeObserver(() => lastB && place(lastB));
+  laneObserver.observe(lane);
   function place(B) {
-    const H = lane.clientHeight, mid = H / 2;
-    slot = Math.max(34, Math.min(66, (H - 40) / 10));
+    lastB = B;
+    const H = lane.clientHeight, E = B.enemy.length, A = B.ally.length;
+    slot = Math.max(26, Math.min(66, (H - 48) / Math.max(2, E + A)));
+    const top0 = Math.max(8, (H - (E + A) * slot - 32) / 2);
+    const mid = top0 + E * slot + 16;
+    $('#vs').style.top = mid + 'px';
+    lane.style.setProperty('--mid', mid + 'px');
     const size = slot - 6;
     const put = (u, top) => { const e = el(u); if (!e) return; e.style.top = top + 'px'; e.style.width = e.style.height = size + 'px'; };
     B.enemy.forEach((u, i) => put(u, mid - 16 - (i + 1) * slot));
@@ -173,18 +252,19 @@ function makeBattleUI() {
     setTimeout(() => f.remove(), 950);
   }
   return {
-    async setup(B) {
+    async setup(B, instant = false) {
       lane.querySelectorAll('.bu').forEach((e) => e.remove());
+      els.clear();
       for (const u of [...B.ally, ...B.enemy]) {
         const stage = u.t - 1;
-        const e = h(`<div class="bu ${u.side} stage-${stage}"><div class="spr">${creatureSVG(u.sp, stage)}</div>
+        const e = h(`<div class="bu ${u.side} stage-${stage}"><div class="spr">${creatureSVG(u.sp, stage, { shiny: u.shiny })}</div>
           <div class="badge-atk">${u.atk}</div><div class="badge-hp">${u.hp}</div>
           <div class="lbl">${esc(u.sp.names[stage])}<small>Lv ${u.lvl}</small></div></div>`);
         lane.appendChild(e);
         els.set(u.key, e);
       }
       place(B);
-      await bwait(600);
+      if (!instant) await bwait(600);
     },
     async trigger(u, name) {
       const e = el(u); if (!e) return;
@@ -223,15 +303,52 @@ function makeBattleUI() {
   };
 }
 
-async function playBattle(title, enemy) {
+// Before a fight: see both lineups, swap your order, then start.
+function previewSide(team, side) {
+  const list = team.filter(Boolean);
+  const bonus = elementBonus(list);
+  return list.map((c, i) => {
+    const st = creatureStats(c), sp = SPECIES_BY_ID[c.id], b = bonus[sp.el] || 0;
+    return { key: 'p' + side + i, id: c.id, sp, lvl: c.lvl, t: evoStage(c.lvl) + 1, shiny: !!c.shiny, atk: st.atk + b, hp: st.hp + b, side };
+  });
+}
+
+async function scout(ui, enemy, canRun) {
+  for (;;) {
+    ui.setup({ ally: previewSide(teamEntries(), 'ally'), enemy: previewSide(enemy, 'enemy') }, true);
+    const mine = S.team.map((uid, i) => {
+      const c = uid != null && byUid(uid);
+      return `<div class="mini-slot ${c ? '' : 'empty'} ${scoutSel === i ? 'sel' : ''}" data-s="${i}">${c ? art(c) : ''}</div>`;
+    }).join('');
+    const buttons = [{ key: 'fight', label: 'Fight!', cls: 'primary' }];
+    if (canRun) buttons.push({ key: 'run', label: 'Run away' });
+    const p = battleFooter(`<div class="scout"><span class="hint">Your order (tap two to swap):</span><div class="mini-row">${mine}</div></div>`, buttons);
+    const swapped = new Promise((resolve) => {
+      $('#b-foot').querySelectorAll('[data-s]').forEach((el) => (el.onclick = () => {
+        const i = Number(el.dataset.s);
+        if (scoutSel === null) { if (S.team[i] != null) scoutSel = i; }
+        else { [S.team[scoutSel], S.team[i]] = [S.team[i], S.team[scoutSel]]; scoutSel = null; save(); }
+        resolve('swap');
+      }));
+    });
+    const choice = await Promise.race([p, swapped]);
+    if (choice !== 'swap') { scoutSel = null; return choice; }
+  }
+}
+let scoutSel = null;
+
+async function playBattle(title, enemy, { canRun = false } = {}) {
   busy = true; syncPause();
   BUI.skip = false;
   $('#b-title').textContent = title;
   $('#b-speed').textContent = S.speed + '×';
-  $('#b-foot').innerHTML = '<p class="hint center">Front fights front. When one faints, the next steps up.</p>';
   $('#battle').classList.remove('hidden');
   await nextFrame();
-  const result = await runBattle(teamEntries(), enemy, makeBattleUI());
+  const ui = makeBattleUI();
+  const choice = await scout(ui, enemy, canRun);
+  if (choice === 'run') return 'run';
+  $('#b-foot').innerHTML = '<p class="hint center">Front fights front. When one faints, the next steps up.</p>';
+  const result = await runBattle(teamEntries(), enemy, ui);
   await sleep(BUI.skip ? 100 : 400);
   return result;
 }
@@ -264,22 +381,36 @@ async function flashIn() {
   f.classList.remove('go');
 }
 
+function pickWild(regions) {
+  const list = SPECIES.filter((s) => regions.includes(s.region));
+  return weightedPick(list, (s) => RARITY[s.rarity].wild);
+}
+
 async function wildEncounter() {
   busy = true; syncPause();
   const w = World.map.wild;
   const n = randInt(1, Math.max(1, Math.min(w.pack, teamSize())));
+  // A small chance that a creature from a faraway region wanders in.
+  const visitor = Math.random() < 0.05;
   const enemy = [];
-  for (let i = 0; i < n; i++) enemy.push({ id: rand(w.pool), lvl: randInt(w.min, w.max) });
+  for (let i = 0; i < n; i++) {
+    const sp = visitor && i === 0 ? pickWild([0, 1, 2, 3, 4].filter((r) => !w.regions.includes(r))) : pickWild(w.regions);
+    enemy.push(rollCreature(sp.id, randInt(w.min, w.max)));
+  }
+  S.seen = [...new Set([...(S.seen || []), ...enemy.map((e) => e.id)])];
   await flashIn();
-  const names = [...new Set(enemy.map((e) => SPECIES_BY_ID[e.id].names[evoStage(e.lvl)]))].join(' & ');
-  const result = await playBattle(`Wild ${names}!`, enemy);
+  const names = [...new Set(enemy.map((e) => nameOf(e)))].join(' & ');
+  const result = await playBattle(`${visitor ? 'Rare visitor! ' : 'Wild '}${names}`, enemy, { canRun: true });
   stepsSinceBattle = 0;
 
-  if (result === 'win') {
+  if (result === 'run') {
+    await battleFooter('<div class="result-banner">You slipped away safely.</div>', [{ key: 'ok', label: 'Continue', cls: 'primary' }]);
+  } else if (result === 'win') {
     const lv = avgLvl(enemy);
-    const grew = rewardTeam(Math.round(5 + lv * 3), Math.round(4 + lv * 2));
-    const pick = rand(enemy);
-    await befriend(pick, `<div class="result-banner win">You won!</div><p class="hint center">+${Math.round(5 + lv * 3)} XP · +${Math.round(4 + lv * 2)} coins${grewText(grew)}</p>`);
+    const xp = Math.round(5 + lv * 3);
+    const { grew, coins } = rewardTeam(xp, Math.round(4 + lv * 2));
+    const pick = enemy.find((e) => e.shiny) || rand(enemy);
+    await befriend(pick, `<div class="result-banner win">You won!</div><p class="hint center">+${xp} XP · +${coins} coins${grewText(grew)}</p>`);
   } else if (result === 'draw') {
     await battleFooter('<div class="result-banner">A tie!</div><p class="hint center">The wild creatures wandered off.</p>', [{ key: 'ok', label: 'Continue', cls: 'primary' }]);
   } else {
@@ -294,25 +425,30 @@ const JOIN_CHANCE = { common: 0.45, rare: 0.3, epic: 0.15 };
 
 async function befriend(wild, header) {
   const sp = SPECIES_BY_ID[wild.id];
-  const name = sp.names[evoStage(wild.lvl)];
-  const base = JOIN_CHANCE[sp.rarity];
-  const art = `<div style="display:flex;align-items:center;gap:10px;justify-content:center"><div class="mini" style="width:54px;height:54px">${creatureSVG(sp, evoStage(wild.lvl))}</div>
-    <p style="text-align:left">The wild <b>${esc(name)}</b> (Lv ${wild.lvl}) is watching you curiously.</p></div>`;
+  const name = nameOf(wild);
+  const card = `<div class="wild-card"><div class="mini" style="width:58px;height:58px">${art(wild)}</div>
+    <div><b>${esc(name)}</b> <span class="hint">Lv ${wild.lvl}</span> ${wild.shiny ? '<b class="shiny-tag">✦ Shiny</b>' : ''}
+      <div class="stars-line">${starText(wild)}</div>
+      <div class="synergies">${traitChips(wild)}</div>
+      <div class="hint" style="font-size:12px"><b>${ABILITY[abilityKey(wild)].name}:</b> ${abilityText(abilityKey(wild), wild.lvl)}</div>
+    </div></div>
+    <p class="hint center" style="font-size:13px">It's watching you curiously.</p>`;
   const buttons = [{ key: 'wave', label: 'Wave hello' }, { key: 'leave', label: 'Leave' }];
-  if (S.berries > 0) buttons.unshift({ key: 'berry', label: `Offer berry (${S.berries})`, cls: 'primary' });
+  if (S.berries > 0) buttons.unshift({ key: 'berry', label: `Berry (${S.berries})`, cls: 'primary' });
   else buttons[0].cls = 'primary';
-  const choice = await battleFooter(header + art, buttons);
+  const choice = await battleFooter(header + card, buttons);
   if (choice === 'leave') return;
-  let chance = base;
+  let chance = JOIN_CHANCE[sp.rarity] + (wild.shiny ? 0.2 : 0);
   if (choice === 'berry') { S.berries--; chance += 0.35; updateHud(); }
-  const joined = Math.random() < chance;
-  if (joined) {
-    const c = giveCreature(wild.id, wild.lvl);
+  if (Math.random() < chance) {
+    const c = giveCreature(wild);
     save();
-    const where = S.team.includes(c.uid) ? 'It joined your team!' : 'Your team is full, so it went to rest at Home.';
-    await battleFooter(`<div class="result-banner win">${esc(name)} wants to come along!</div><p class="hint center">${where}</p>`, [{ key: 'ok', label: 'Yay!', cls: 'primary' }]);
+    const note = S.team.includes(c.uid) ? 'It joined your team!' : 'Your team is full, so it went to rest at Home.';
+    const sheet = openModal(revealHTML(c, `${esc(name)} wants to come along!`, note) + '<button class="btn primary block" data-close style="margin-top:12px">Yay!</button>');
+    await new Promise((r) => (sheet.querySelector('[data-close]').onclick = r));
+    closeModal();
   } else {
-    await battleFooter(`<div class="result-banner">${esc(name)} scampered off.</div><p class="hint center">${choice === 'berry' ? 'It took the berry though!' : 'Maybe a Sweet Berry would help next time.'}</p>`, [{ key: 'ok', label: 'Continue', cls: 'primary' }]);
+    await battleFooter(`<div class="result-banner">${esc(name)} scampered off.</div><p class="hint center">${choice === 'berry' ? 'It took the berry though!' : 'A Sweet Berry might help next time.'}</p>`, [{ key: 'ok', label: 'Continue', cls: 'primary' }]);
   }
   save();
 }
@@ -323,13 +459,13 @@ async function trainerBattle(npc) {
   await say(npc.name, tr.before);
   busy = true; syncPause();
   await flashIn();
-  const enemy = tr.team.map(([id, lvl]) => ({ id, lvl }));
+  const enemy = tr.team.map(([id, lvl]) => plainCreature(id, lvl));
   const result = await playBattle(npc.name, enemy);
   stepsSinceBattle = 0;
   if (result === 'win') {
     S.beaten[npc.id] = true;
-    const grew = rewardTeam(Math.round((5 + avgLvl(enemy) * 3) * 2.5), tr.coins);
-    await battleFooter(`<div class="result-banner win">You beat ${esc(npc.name)}!</div><p class="hint center">+${tr.coins} coins${grewText(grew)}</p>`, [{ key: 'ok', label: 'Continue', cls: 'primary' }]);
+    const { grew, coins } = rewardTeam(Math.round((5 + avgLvl(enemy) * 3) * 2.5), tr.coins);
+    await battleFooter(`<div class="result-banner win">You beat ${esc(npc.name)}!</div><p class="hint center">+${coins} coins${grewText(grew)}</p>`, [{ key: 'ok', label: 'Continue', cls: 'primary' }]);
     closeBattle();
     await say(npc.name, tr.after);
     if (tr.crest != null && S.crests < tr.crest + 1) { S.crests = tr.crest + 1; save(); updateHud(); showCrest(tr.crest); }
@@ -353,7 +489,7 @@ function showCrest(r) {
   const sheet = openModal(`<div class="center">
     <h2>You earned the ${REGIONS[r].crest}!</h2>
     <div class="crest-big">${crestSVG(r, true)}</div>
-    <p class="hint">New creatures will start showing up in your eggs at the Hatchery.</p>
+    <p class="hint">Creatures from ${REGIONS[Math.min(4, r + 1)].name} will now hatch from Meadow Eggs.</p>
     <button class="btn primary block" data-close style="margin-top:14px">Hooray!</button></div>`);
   sheet.querySelector('[data-close]').onclick = closeModal;
 }
@@ -432,30 +568,39 @@ let selectedSlot = null;
 function slotHTML(i) {
   const c = S.team[i] != null ? byUid(S.team[i]) : null;
   if (!c) return `<div class="slot" data-slot="${i}"><span class="num">${i + 1}</span><div class="plus">+</div></div>`;
-  const st = creatureStats(c.id, c.lvl);
+  const st = creatureStats(c);
   return `<div class="slot filled ${selectedSlot === i ? 'selected' : ''}" data-slot="${i}"><span class="num">${i + 1}</span>
-    <div class="art">${creatureSVG(SPECIES_BY_ID[c.id], evoStage(c.lvl))}</div>
+    <div class="art">${art(c)}</div>
     <span>${esc(nameOf(c))}</span><span class="stats-line"><b>${st.atk}</b> / <i>${st.hp}</i> · Lv${c.lvl}</span></div>`;
 }
 
 function monCard(c) {
   const sp = SPECIES_BY_ID[c.id];
-  return `<div class="mon" data-uid="${c.uid}">${S.team.includes(c.uid) ? '<span class="tag">Team</span>' : ''}
-    <div class="mini">${creatureSVG(sp, evoStage(c.lvl))}</div><div>${esc(nameOf(c))}</div><div class="lv">${ELEMENTS[sp.el].name} · Lv ${c.lvl}</div></div>`;
+  return `<div class="mon" data-uid="${c.uid}">${S.team.includes(c.uid) ? '<span class="tag">Team</span>' : ''}${c.shiny ? '<span class="tag shiny">✦</span>' : ''}
+    <div class="mini">${art(c)}</div><div>${esc(nameOf(c))}</div>
+    <div class="stars-line small">${starText(c)}</div>
+    <div class="lv">${ELEMENTS[sp.el].name} · Lv ${c.lvl} · ${c.traits.length}T</div></div>`;
 }
 
+let rosterSort = 'level';
 function renderTeam(body) {
+  const bonus = elementBonus(teamEntries().filter(Boolean));
+  const bonusChips = Object.entries(bonus).map(([el, n]) => `<span class="chip"><span class="dot" style="background:${ELEMENTS[el].color}"></span>${ELEMENTS[el].name} team: +${n}/+${n}</span>`).join('');
+  const sorters = { level: (a, b) => b.lvl - a.lvl, stars: (a, b) => stars(b.roll) - stars(a.roll) || b.traits.length - a.traits.length, kind: (a, b) => a.id.localeCompare(b.id) || b.lvl - a.lvl };
   body.innerHTML = `
-    <p class="hint">Battles go in this order: #1 fights first. Tap two creatures to swap them, or tap one twice to see it.</p>
+    <p class="hint">#1 fights first. Tap two creatures to swap them, or tap one twice to see it.</p>
     <div class="card" style="margin-top:8px">
       <div class="lineup-labels"><span>◀ Front</span><span>Back ▶</span></div>
       <div class="lineup">${[0, 1, 2, 3, 4].map(slotHTML).join('')}</div>
-      <p class="hint" style="font-size:12px"><b style="color:#c0623f">Orange</b> = attack, <b style="color:#b04a63">pink</b> = HP. Fire beats Leaf, Leaf beats Water, Water beats Fire.</p>
+      <div class="synergies">${bonusChips || '<span class="hint" style="font-size:12px">Put 3 creatures of one element together for a team bonus.</span>'}</div>
     </div>
-    <h3>All creatures (${S.roster.length})</h3>
-    <div class="grid">${[...S.roster].sort((a, b) => b.lvl - a.lvl).map(monCard).join('')}</div>`;
+    <div class="row-head"><h3>All creatures (${S.roster.length})</h3>
+      <div class="seg">${['level', 'stars', 'kind'].map((k) => `<button class="${rosterSort === k ? 'on' : ''}" data-sort="${k}">${k[0].toUpperCase() + k.slice(1)}</button>`).join('')}</div></div>
+    <p class="hint" style="font-size:12px;margin-bottom:8px">Stardust: <b>${S.dust}</b> · Earn it by releasing creatures. Spend it to reroll traits.</p>
+    <div class="grid">${[...S.roster].sort(sorters[rosterSort]).map(monCard).join('')}</div>`;
   body.querySelectorAll('.slot').forEach((el) => (el.onclick = () => onSlot(Number(el.dataset.slot))));
   body.querySelectorAll('.mon').forEach((el) => (el.onclick = () => showCreature(Number(el.dataset.uid))));
+  body.querySelectorAll('[data-sort]').forEach((el) => (el.onclick = () => { rosterSort = el.dataset.sort; refreshPanel(); }));
 }
 
 function onSlot(i) {
@@ -474,40 +619,53 @@ function onSlot(i) {
 }
 
 function snackCost(c) { return 10 * c.lvl; }
+const REROLL_COST = 40, POLISH_COST = 60;
 
 function showCreature(uid, confirmRelease = false) {
   const c = byUid(uid);
   if (!c) return;
   const sp = SPECIES_BY_ID[c.id];
   const stage = evoStage(c.lvl);
-  const st = creatureStats(c.id, c.lvl);
+  const st = creatureStats(c);
+  const key = abilityKey(c);
   const inTeam = S.team.includes(uid);
+  const others = sp.abilities.filter((k) => k !== key).map((k) => ABILITY[k].name).join(', ');
   const nextEvo = stage === 0 ? `Grows into ${sp.names[1]} at Lv 10.` : stage === 1 ? `Grows into ${sp.names[2]} at Lv 25.` : 'Fully grown!';
   const beats = ELEMENTS[sp.el].beats.map((e) => ELEMENTS[e].name).join(' & ');
+  const twins = S.roster.filter((x) => x.id === c.id && x.uid !== uid);
   const sheet = openModal(`<div class="center">
-      <div class="big-art">${creatureSVG(sp, stage)}</div>
+      ${c.shiny ? '<div class="shiny-banner">✦ Shiny ✦</div>' : ''}
+      <div class="big-art">${art(c)}</div>
       <h2>${esc(nameOf(c))}</h2>
+      <div class="stars-big static">${starText(c)}</div>
       <div class="synergies" style="justify-content:center">${elChip(sp)}<span class="chip">${ROLES[sp.role].name}</span>
         <span class="chip" style="color:${RARITY[sp.rarity].color}">${RARITY[sp.rarity].name}</span></div>
     </div>
     <div style="margin-top:12px">Level ${c.lvl} <span class="hint">· ${c.xp}/${xpNeed(c.lvl)} XP · ${nextEvo}</span></div>
     <div class="xpbar"><i style="width:${(100 * c.xp) / xpNeed(c.lvl)}%"></i></div>
     <div class="stats">
-      <div class="stat">Attack<b>${st.atk}</b></div>
-      <div class="stat">HP<b>${st.hp}</b></div>
-      <div class="stat wide"><b style="display:inline">${ABILITY[c.id].name}</b><br>${abilityText(c.id, c.lvl)}</div>
-      <div class="stat wide">Hits ${beats} for 50% extra damage.</div>
+      <div class="stat">Attack<b>${st.atk}</b><small>${Math.round(c.roll.a * 100)}% roll</small></div>
+      <div class="stat">HP<b>${st.hp}</b><small>${Math.round(c.roll.h * 100)}% roll</small></div>
+      <div class="stat wide"><b style="display:inline">${ABILITY[key].name}</b><br>${abilityText(key, c.lvl)}${others ? `<br><small>Other ${esc(sp.names[0])} can have: ${others}</small>` : ''}</div>
+      <div class="stat wide">Traits<div class="synergies trait-desc">${traitChips(c, true)}</div></div>
+      <div class="stat wide">Hits ${beats} for extra damage.</div>
     </div>
     <div class="btn-row">
       <button class="btn ${inTeam ? '' : 'green'}" data-act="team">${inTeam ? 'Rest at home' : 'Add to team'}</button>
       <button class="btn primary" data-act="snack">Snack +1 Lv<br><small>${snackCost(c)} coins</small></button>
     </div>
     <div class="btn-row">
-      <button class="btn" data-act="release">${confirmRelease ? 'Tap again to say goodbye' : 'Release'}</button>
-      <button class="btn" data-act="close">Close</button>
-    </div>`);
-  sheet.querySelector('[data-act=close]').onclick = closeModal;
-  sheet.querySelector('[data-act=team]').onclick = () => {
+      <button class="btn" data-act="merge" ${twins.length ? '' : 'disabled'}>Merge<br><small>${twins.length ? `${twins.length} other ${esc(sp.names[0])}` : `Needs another ${esc(sp.names[0])}`}</small></button>
+      <button class="btn" data-act="reroll">Reroll traits<br><small>${REROLL_COST} stardust</small></button>
+    </div>
+    <div class="btn-row">
+      <button class="btn" data-act="polish">Polish stats<br><small>${POLISH_COST} stardust</small></button>
+      <button class="btn" data-act="release">${confirmRelease ? 'Tap again to confirm' : 'Release'}<br><small>+${dustValue(c)} stardust</small></button>
+    </div>
+    <button class="btn block" data-act="close" style="margin-top:8px">Close</button>`);
+  const on = (act, fn) => (sheet.querySelector(`[data-act=${act}]`).onclick = fn);
+  on('close', closeModal);
+  on('team', () => {
     if (inTeam) {
       if (teamSize() <= 1) { toast('Your team needs at least one creature.'); return; }
       S.team[S.team.indexOf(uid)] = null;
@@ -517,75 +675,162 @@ function showCreature(uid, confirmRelease = false) {
       S.team[empty] = uid;
     }
     save(); closeModal(); refreshPanel();
-  };
-  sheet.querySelector('[data-act=snack]').onclick = () => {
+  });
+  on('snack', () => {
     const cost = snackCost(c);
     if (S.coins < cost) { toast(`You need ${cost} coins for a snack.`); return; }
     S.coins -= cost;
     const old = c.lvl; c.lvl++; announceGrowth(c, old);
     save(); updateHud(); showCreature(uid); refreshPanel();
-  };
-  sheet.querySelector('[data-act=release]').onclick = () => {
+  });
+  on('merge', () => { if (twins.length) pickMergeDonor(c, twins); });
+  on('reroll', () => {
+    if (S.dust < REROLL_COST) { toast(`You need ${REROLL_COST} stardust.`); return; }
+    S.dust -= REROLL_COST;
+    c.traits = rollTraits(sp, Math.max(1, c.traits.length));
+    save(); toast('New traits rolled!'); showCreature(uid); refreshPanel();
+  });
+  on('polish', () => {
+    if (S.dust < POLISH_COST) { toast(`You need ${POLISH_COST} stardust.`); return; }
+    S.dust -= POLISH_COST;
+    const before = stars(c.roll);
+    c.roll = { a: Math.max(c.roll.a, Math.round(Math.random() * 100) / 100), h: Math.max(c.roll.h, Math.round(Math.random() * 100) / 100) };
+    save(); toast(stars(c.roll) > before ? 'It sparkles! Stars went up.' : 'Stats polished a little.'); showCreature(uid); refreshPanel();
+  });
+  on('release', () => {
     if (S.roster.length <= 1) { toast("You can't release your only creature."); return; }
     if (inTeam && teamSize() <= 1) { toast('Add another creature to your team first.'); return; }
     if (!confirmRelease) { showCreature(uid, true); return; }
     S.roster = S.roster.filter((x) => x.uid !== uid);
     if (inTeam) S.team[S.team.indexOf(uid)] = null;
+    S.dust += dustValue(c);
     save(); closeModal(); refreshPanel();
-    toast(`${esc(nameOf(c))} went back to the wild. Bye bye!`);
-  };
+    toast(`${esc(nameOf(c))} went back to the wild. +${dustValue(c)} stardust`);
+  });
+}
+
+// Merge: another creature of the same kind joins this one. Keep the better stats,
+// gain a level, and pass on one trait or its ability.
+function pickMergeDonor(c, twins) {
+  const sheet = openModal(`<h2>Merge into ${esc(nameOf(c))}</h2>
+    <p class="hint">Pick who to merge in. ${esc(nameOf(c))} keeps the better stats of both, gains a level, and can learn one trait or ability from it.</p>
+    <div class="grid" style="margin-top:10px">${twins.map(monCard).join('')}</div>
+    <button class="btn block" data-act="back" style="margin-top:12px">Back</button>`);
+  sheet.querySelector('[data-act=back]').onclick = () => showCreature(c.uid);
+  sheet.querySelectorAll('.mon').forEach((el) => (el.onclick = () => pickMergeGift(c, byUid(Number(el.dataset.uid)))));
+}
+
+function pickMergeGift(c, donor) {
+  const sp = SPECIES_BY_ID[c.id];
+  const gifts = donor.traits.filter((k) => !c.traits.includes(k) && !EXCLUSIVE_TRAITS.some((g) => g.includes(k) && g.some((o) => o !== k && c.traits.includes(o))))
+    .map((k) => ({ key: 't:' + k, label: `Learn trait: ${TRAITS[k].name}`, desc: TRAITS[k].desc }));
+  if (abilityKey(donor) !== abilityKey(c)) gifts.push({ key: 'a', label: `Learn ability: ${ABILITY[abilityKey(donor)].name}`, desc: abilityText(abilityKey(donor), c.lvl) });
+  gifts.push({ key: 'none', label: 'Just merge', desc: 'Keep traits and ability as they are.' });
+  const sheet = openModal(`<h2>What should ${esc(nameOf(c))} learn?</h2>
+    <p class="hint">${esc(nameOf(donor))} (Lv ${donor.lvl}) will merge in.${c.traits.length >= 3 ? ' Learning a trait replaces one of the current three.' : ''}</p>
+    <div class="choice-list">${gifts.map((g) => `<button class="btn block choice" data-g="${g.key}"><b>${g.label}</b><small>${g.desc}</small></button>`).join('')}</div>
+    <button class="btn block" data-act="back" style="margin-top:12px">Back</button>`);
+  sheet.querySelector('[data-act=back]').onclick = () => showCreature(c.uid);
+  sheet.querySelectorAll('[data-g]').forEach((el) => (el.onclick = () => {
+    const g = el.dataset.g;
+    if (g.startsWith('t:') && c.traits.length >= 3) return pickTraitToReplace(c, donor, g.slice(2));
+    doMerge(c, donor, g);
+  }));
+}
+
+function pickTraitToReplace(c, donor, newTrait) {
+  const sheet = openModal(`<h2>Replace which trait?</h2>
+    <p class="hint">${TRAITS[newTrait].name}: ${TRAITS[newTrait].desc}</p>
+    <div class="choice-list">${c.traits.map((k) => `<button class="btn block choice" data-r="${k}"><b>${TRAITS[k].name}</b><small>${TRAITS[k].desc}</small></button>`).join('')}</div>
+    <button class="btn block" data-act="back" style="margin-top:12px">Back</button>`);
+  sheet.querySelector('[data-act=back]').onclick = () => pickMergeGift(c, donor);
+  sheet.querySelectorAll('[data-r]').forEach((el) => (el.onclick = () => {
+    c.traits = c.traits.filter((k) => k !== el.dataset.r);
+    doMerge(c, donor, 't:' + newTrait);
+  }));
+}
+
+function doMerge(c, donor, gift) {
+  if (gift.startsWith('t:')) c.traits.push(gift.slice(2));
+  if (gift === 'a') c.ab = donor.ab;
+  c.roll = { a: Math.max(c.roll.a, donor.roll.a), h: Math.max(c.roll.h, donor.roll.h) };
+  c.shiny = c.shiny || donor.shiny;
+  const old = c.lvl;
+  c.lvl = Math.max(c.lvl, donor.lvl) + 1;
+  announceGrowth(c, old);
+  S.roster = S.roster.filter((x) => x.uid !== donor.uid);
+  const di = S.team.indexOf(donor.uid);
+  if (di >= 0) S.team[di] = S.team.includes(c.uid) ? null : c.uid;
+  save();
+  const sheet = openModal(revealHTML(c, 'Merged!', '') + '<button class="btn primary block" data-close style="margin-top:12px">Great!</button>');
+  sheet.querySelector('[data-close]').onclick = () => { closeModal(); refreshPanel(); };
+  refreshPanel();
 }
 
 // ---------- hatchery ----------
+function eggCost() { return Math.min(300, S.eggCost); }
+const MYSTERY_COST = 350;
+
 function renderHatchery(body) {
   const owned = new Set(S.roster.map((c) => c.id));
+  const seen = new Set([...(S.seen || []), ...owned]);
+  const regionMax = Math.max(1, Math.min(4, S.crests + 1));
   body.innerHTML = `
-    <div class="card hatch-card">
-      <div class="egg-wrap" id="egg">${eggSVG()}</div>
-      <button class="btn primary" id="btn-hatch">Hatch an egg · ${S.eggCost} coins</button>
-      <p class="hint" style="margin-top:10px">Eggs hatch at Lv 3. Earning crests adds new kinds of creatures to the eggs.</p>
+    <div class="egg-pair">
+      <div class="card hatch-card">
+        <div class="egg-wrap" id="egg-meadow">${eggSVG()}</div>
+        <b>Meadow Egg</b>
+        <p class="hint" style="font-size:12px">Creatures from ${REGIONS.slice(0, regionMax + 1).map((r) => r.name).join(', ')}.</p>
+        <button class="btn primary small" data-egg="meadow">${eggCost()} coins</button>
+      </div>
+      <div class="card hatch-card">
+        <div class="egg-wrap" id="egg-mystery">${eggSVG(false, true)}</div>
+        <b>Mystery Egg</b>
+        <p class="hint" style="font-size:12px">Any creature from anywhere. Better odds for rare ones.</p>
+        <button class="btn primary small" data-egg="mystery">${MYSTERY_COST} coins</button>
+      </div>
     </div>
-    <h3>Creatures you've met (${owned.size}/${SPECIES.length})</h3>
-    <div class="grid">${SPECIES.map((sp) => {
-      const known = owned.has(sp.id);
-      return `<div class="mon ${known ? '' : 'unknown'}"><div class="mini">${creatureSVG(sp, 0)}</div>
-        <div>${known ? sp.names[0] : '???'}</div><div class="lv">${known ? ELEMENTS[sp.el].name : REGIONS[sp.region].name}</div></div>`;
-    }).join('')}</div>`;
-  $('#btn-hatch').onclick = hatch;
+    <p class="hint" style="margin-top:10px">Eggs hatch at Lv 3 with random stars and traits. Every 10th egg is guaranteed to be a great one (${S.pity}/10).</p>
+    <h3>Creature book (${owned.size}/${SPECIES.length} befriended)</h3>
+    ${REGIONS.map((reg, r) => `<h4 class="region-head">${reg.name}</h4><div class="grid">${SPECIES.filter((sp) => sp.region === r).map((sp) => {
+      const known = owned.has(sp.id), met = seen.has(sp.id);
+      return `<div class="mon ${known || met ? '' : 'unknown'}"><div class="mini">${creatureSVG(sp, 0)}</div>
+        <div>${known || met ? sp.names[0] : '???'}</div><div class="lv">${known ? `${ELEMENTS[sp.el].name} · ${RARITY[sp.rarity].name}` : met ? 'Seen' : ''}</div></div>`;
+    }).join('')}</div>`).join('')}`;
+  body.querySelectorAll('[data-egg]').forEach((b) => (b.onclick = () => hatch(b.dataset.egg)));
 }
 
-function rollEgg() {
-  const list = SPECIES.filter((s) => s.region <= Math.min(4, S.crests));
-  const roll = Math.random() * 100;
-  const rarity = roll < RARITY.epic.weight ? 'epic' : roll < RARITY.epic.weight + RARITY.rare.weight ? 'rare' : 'common';
+function rollEgg(kind) {
+  const regionMax = Math.max(1, Math.min(4, S.crests + 1));
+  const list = kind === 'mystery' ? SPECIES : SPECIES.filter((s) => s.region <= regionMax);
+  const w = kind === 'mystery' ? { common: 50, rare: 38, epic: 12 } : { common: 70, rare: 25, epic: 5 };
+  const rarity = weightedPick(Object.keys(w), (k) => w[k]);
   const pool = list.filter((s) => s.rarity === rarity);
   return rand(pool.length ? pool : list);
 }
 
 let hatching = false;
-function hatch() {
+function hatch(kind) {
   if (hatching) return;
-  if (S.coins < S.eggCost) { toast(`You need ${S.eggCost} coins. Win battles to earn more!`); return; }
+  const cost = kind === 'mystery' ? MYSTERY_COST : eggCost();
+  if (S.coins < cost) { toast(`You need ${cost} coins. Win battles to earn more!`); return; }
   hatching = true;
-  S.coins -= S.eggCost;
-  S.eggCost += 25;
-  const sp = rollEgg();
-  const c = giveCreature(sp.id, 3);
+  S.coins -= cost;
+  if (kind !== 'mystery') S.eggCost += 25;
+  S.pity = (S.pity || 0) + 1;
+  const good = S.pity >= 10;
+  const sp = rollEgg(kind);
+  const c = giveCreature(rollCreature(sp.id, 3, { good }));
+  if (good || (stars(c.roll) >= 4 && c.traits.length >= 2)) S.pity = 0;
   save(); updateHud();
-  const egg = $('#egg');
+  const egg = $(kind === 'mystery' ? '#egg-mystery' : '#egg-meadow');
   egg.classList.add('wobble');
   setTimeout(() => {
-    egg.innerHTML = eggSVG(true);
+    egg.innerHTML = eggSVG(true, kind === 'mystery');
     setTimeout(() => {
       hatching = false;
-      const sheet = openModal(`<div class="center">
-        <h2>A new friend!</h2>
-        <div class="big-art pop">${creatureSVG(sp, 0)}</div>
-        <h2>${esc(nameOf(c))}</h2>
-        <div class="synergies" style="justify-content:center">${elChip(sp)}<span class="chip">${ROLES[sp.role].name}</span>
-          <span class="chip" style="color:${RARITY[sp.rarity].color}">${RARITY[sp.rarity].name}</span></div>
-        <p class="hint" style="margin-top:10px">${S.team.includes(c.uid) ? 'They joined your team!' : 'Your team is full, so they are resting at Home.'}</p>
-        <button class="btn primary block" data-close style="margin-top:14px">Lovely!</button></div>`);
+      const note = (good ? 'Lucky egg! ' : '') + (S.team.includes(c.uid) ? 'They joined your team!' : 'Your team is full, so they are resting at Home.');
+      const sheet = openModal(revealHTML(c, 'A new friend!', note) + '<button class="btn primary block" data-close style="margin-top:12px">Lovely!</button>');
       sheet.querySelector('[data-close]').onclick = () => { closeModal(); refreshPanel(); };
     }, 350);
   }, 1200);
@@ -614,33 +859,37 @@ function renderMarket(body) {
 function teamPower() { return Math.max(1, Math.round(avgLvl(teamEntries()))); }
 function genRivals() {
   const p = teamPower();
-  const pool = SPECIES.filter((s) => s.region <= Math.min(4, S.crests + 1));
+  const regions = [0, 1, 2, 3, 4].filter((r) => r <= Math.min(4, S.crests + 1));
   const names = [...RIVAL_NAMES].sort(() => Math.random() - 0.5);
   return [{ off: -1, mult: 1, tro: 5 }, { off: 0, mult: 1.5, tro: 10 }, { off: 2, mult: 2.2, tro: 20 }].map((d, i) => {
     const lvl = Math.max(1, p + d.off);
     const size = Math.max(2, Math.min(5, teamSize() + (i === 2 ? 1 : 0)));
-    const team = Array.from({ length: size }, () => ({ id: rand(pool).id, lvl }));
+    const team = Array.from({ length: size }, () => rollCreature(pickWild(regions).id, lvl));
     return { name: names[i], lvl, team, coins: Math.round((20 + lvl * 5) * d.mult), trophies: d.tro };
   });
 }
+
+// Friend codes carry each creature's level, stars, traits, ability and shiny.
 function encodeTeam() {
-  const data = { n: S.name || 'Tamer', t: teamEntries().map((c) => (c ? [c.id, c.lvl] : 0)) };
-  const bytes = new TextEncoder().encode(JSON.stringify(data));
-  return 'CV2-' + btoa(String.fromCharCode(...bytes));
+  const t = teamEntries().filter(Boolean).map((c) => [c.id, c.lvl, Math.round(c.roll.a * 100), Math.round(c.roll.h * 100), c.traits.join('.'), c.ab, c.shiny ? 1 : 0]);
+  const bytes = new TextEncoder().encode(JSON.stringify({ n: S.name || 'Tamer', t }));
+  return 'CV3-' + btoa(String.fromCharCode(...bytes));
 }
 function decodeTeam(code) {
   try {
     code = code.trim();
-    if (!/^CV[12]-/.test(code)) return null;
+    if (!/^CV[123]-/.test(code)) return null;
     const bin = atob(code.slice(4));
     const d = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (ch) => ch.charCodeAt(0))));
     if (!Array.isArray(d.t) || d.t.length > 5) return null;
-    const team = d.t.map((x) => {
-      if (!x) return null;
-      const id = x[0], lvl = Math.floor(Number(x[1]));
+    const pct = (v) => Math.max(0, Math.min(100, Number(v) || 0)) / 100;
+    const team = d.t.filter(Boolean).map((x) => {
+      const [id, lvlRaw, a = 50, hh = 50, tr = '', ab = 0, sh = 0] = x;
+      const lvl = Math.floor(Number(lvlRaw));
       if (!SPECIES_BY_ID[id] || !(lvl >= 1 && lvl <= 200)) throw new Error('bad');
-      return { id, lvl };
-    }).filter(Boolean);
+      const traits = String(tr).split('.').filter((k) => TRAITS[k]).slice(0, 3);
+      return { id, lvl, xp: 0, roll: { a: pct(a), h: pct(hh) }, traits, ab: Math.max(0, Math.min(2, Number(ab) || 0)), shiny: !!sh };
+    });
     if (!team.length) return null;
     return { name: String(d.n || 'Friend').slice(0, 20), team };
   } catch (e) { return null; }
@@ -653,7 +902,7 @@ function renderArena(body) {
     <h3>Rival tamers</h3>
     ${S.rivals.map((rv, i) => `<div class="card rival">
       <div class="who"><b>${esc(rv.name)}</b> <span class="hint">· Lv ${rv.lvl}</span>
-        <div class="minis">${rv.team.map((m) => `<div class="mini">${creatureSVG(SPECIES_BY_ID[m.id], evoStage(m.lvl))}</div>`).join('')}</div>
+        <div class="minis">${rv.team.map((m) => `<div class="mini">${art(m)}</div>`).join('')}</div>
         <div class="reward">Win: ${rv.coins} coins · ${rv.trophies} trophies</div></div>
       <button class="btn primary" data-rival="${i}">Battle</button></div>`).join('')}
     <button class="btn block" id="btn-new-rivals">Find new rivals</button>
@@ -713,14 +962,17 @@ function showIntro() {
   sheet.querySelectorAll('[data-pick]').forEach((el) => (el.onclick = () => {
     pick = el.dataset.pick;
     sheet.querySelectorAll('[data-pick]').forEach((x) => x.classList.toggle('picked', x === el));
-    $('#pick-info').innerHTML = `<b>${ABILITY[pick].name}:</b> ${abilityText(pick, 5)}`;
+    $('#pick-info').innerHTML = `Comes with one of these abilities: ${SPECIES_BY_ID[pick].abilities.map((k) => `<b>${ABILITY[k].name}</b> (${abilityText(k, 5)})`).join(' or ')}`;
     $('#btn-begin').disabled = false;
   }));
   $('#btn-begin').onclick = async () => {
     if (!pick) return;
     S.name = $('#tamer-name').value.trim().slice(0, 16) || 'Tamer';
-    giveCreature(pick, 5);
-    save(); closeModal(); updateHud();
+    const c = giveCreature(rollCreature(pick, 5));
+    save(); updateHud();
+    const sheet = openModal(revealHTML(c, `Meet your ${esc(nameOf(c))}!`, 'Every creature is one of a kind: its stars, traits and ability are rolled at random.') + '<button class="btn primary block" data-close style="margin-top:12px">Let\'s go!</button>');
+    await new Promise((r) => (sheet.querySelector('[data-close]').onclick = r));
+    closeModal();
     await say('Mayor Bramble', [
       `Wonderful, ${esc(S.name)}! ${SPECIES_BY_ID[pick].names[0]} already adores you.`,
       'Head north to Meadow Route. Walk through the tall grass to meet wild creatures.',

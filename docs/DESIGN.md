@@ -1,11 +1,13 @@
 # Crestville — Game Concept (v2)
 
-> **Current build (v0.2):** walk around Crestville, meet wild creatures in tall grass,
-> and fight lineup battles: each side stands in a line, the two front creatures hit each
-> other at the same time, and the next in line steps up when one faints. Win a wild battle
-> and the creature may join you (Sweet Berries raise the odds). Trainers on the route,
-> a boss who guards the first Crest, a Hatchery, a Market and an Arena with rival tamers
-> and friend team codes. Skilling, real-time combat and the rest below come later.
+> **Current build (v0.3):** walk around Crestville, meet wild creatures in tall grass, and
+> fight lineup battles (front fights front, next steps up). 60 creatures across 5 regions.
+> Every creature is one of a kind: random stars (stat quality), 1-3 random traits, one of
+> its species' abilities, and a rare shiny color. Scout the enemy lineup and reorder before
+> each fight. Merge duplicates to pass on traits or abilities, release for stardust, and
+> spend stardust to reroll traits or polish stats. Meadow and Mystery eggs with a
+> guaranteed great egg every 10. Rare visitors from far regions can appear in the grass.
+> Element team bonus for 3+ of one element. Trainers, a crest boss, Market and Arena.
 
 **Pitch:** A cozy, long-term grind on your phone. Walk around Crestville and the wilds
 around it, gather and craft through slow-burn skills, raise companion creatures that
@@ -125,6 +127,24 @@ for up to ~8 hours; battles, bosses and rare drops only happen while you play.
 
 The current build (an auto-battler team game) is a prototype. Its creatures, art style,
 battle numbers and eggs carry over into the new version.
+
+## Roadmap (agreed ideas, roughly in order)
+1. **Expeditions:** 3-5 minute runs through a region (choose a path of grass, trainers,
+   treasure and rest stops) ending in a boss with loot.
+2. **Boss charms:** equippable charms with random bonus stats, dropped by bosses. Later the
+   home of mech and hybrid parts.
+3. **Combo journal:** records ability combos you discover.
+4. **Breeding:** two creatures make an egg that can inherit traits from both parents.
+5. **More regions:** Ember Ridge, Tidepool Coast, Whisperwood, Stormcrest Peak, each with
+   trainers and a crest boss.
+6. **Town jobs and skilling:** resting creatures gather and craft (mining, fishing,
+   cooking...). Crafted reroll charms give skilling a purpose.
+7. **Time of day and weather** that change which creatures appear.
+8. **Weekly cups** with special rules (one element only, level cap) against other
+   players' saved teams, plus an online ladder.
+9. **Player market** for trading creatures and items (needs a server).
+10. **Seasonal events:** limited-time creatures, shiny colors, cosmetics and town
+    decorations tied to the seasons.
 
 ## Open questions
 - Progress while away: on for gathering only, or fully off?

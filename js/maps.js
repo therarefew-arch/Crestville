@@ -107,7 +107,7 @@ const MAPS = {
       { x: 7, y: 0, to: 'grove', tx: 7, ty: 16 },
       { x: 8, y: 0, to: 'grove', tx: 8, ty: 16 },
     ],
-    wild: { min: 2, max: 3, pack: 2, pool: ['mossbun', 'thistlet', 'fernwhisk', 'puddlepup', 'driplet', 'emberkit'] },
+    wild: { min: 2, max: 3, pack: 2, regions: [0] },
   },
 
   grove: {
@@ -145,6 +145,6 @@ const MAPS = {
       { x: 7, y: 17, to: 'route', tx: 7, ty: 1 },
       { x: 8, y: 17, to: 'route', tx: 8, ty: 1 },
     ],
-    wild: { min: 5, max: 9, pack: 3, pool: ['mossbun', 'thistlet', 'puddlepup', 'emberkit', 'cindermole', 'wickling', 'pebbleton', 'driplet'] },
+    wild: { min: 5, max: 9, pack: 3, regions: [0, 1] },
   },
 };

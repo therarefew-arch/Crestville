@@ -2,6 +2,7 @@
 
 A cozy creature-collecting RPG for phones. Walk around town, meet wild creatures in
 tall grass, and win lineup auto-battles (front fights front) to make new friends.
+Every creature rolls random stars, traits and abilities, so you grind for your own synergies.
 
 See [docs/DESIGN.md](docs/DESIGN.md) for the full game concept.
 
