@@ -2,6 +2,13 @@
 
 The version shows at the bottom of the game screen. Each update adds 1.
 
+## v0.0.12
+- Breeding at the Hatchery: pick any two creatures as parents. The egg hatches right away as
+  one of the parents' species. Stars mix the parents' (with a chance to beat both), each parent
+  trait has a 45% chance to pass on (up to 3), the starting skill usually comes from the
+  matching parent, and shiny parents make shiny babies far more likely.
+- Parents aren't used up. Each breeding costs a little more.
+
 ## v0.0.11
 - Expeditions: start one from any Travel Post (or Coach Driver Bea). Choose a region you've
   visited; each run is 6 stops and a boss, about 3 to 5 minutes.

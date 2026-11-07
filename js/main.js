@@ -1340,8 +1340,19 @@ function renderHatchery(body) {
   const owned = new Set(S.roster.map((c) => c.id));
   const seen = new Set([...(S.seen || []), ...owned]);
   const regionMax = eggRegionMax();
+  const pa = breedPick[0] != null ? byUid(breedPick[0]) : null, pb = breedPick[1] != null ? byUid(breedPick[1]) : null;
+  const parentSlot = (c, i) => c ? `<button class="parent filled" data-parent="${i}"><div class="mini">${art(c)}</div><b>${esc(nameOf(c))}</b><small class="stars-line small">${starText(c)}</small></button>`
+    : `<button class="parent" data-parent="${i}"><span class="plus">+</span><small>Parent ${i + 1}</small></button>`;
   body.innerHTML = `
-    <div class="egg-pair">
+    <div class="card breed-card">
+      <b>Breeding</b>
+      <p class="hint">Pick two parents. Their egg can be either species and may inherit traits, stars and a starting skill.</p>
+      <div class="breed-row">${parentSlot(pa, 0)}<span class="heart">♥</span>${parentSlot(pb, 1)}</div>
+      ${pa && pb ? `<p class="hint" style="font-size:12px">Egg: ${[...new Set([pa.id, pb.id])].map((id) => SPECIES_BY_ID[id].names[0]).join(' or ')} · Traits that can pass: ${[...new Set([...pa.traits, ...pb.traits])].map((k) => TRAITS[k].name).join(', ') || 'none'}</p>` : ''}
+      <div class="egg-wrap small" id="egg-breed">${eggSVG()}</div>
+      <button class="btn primary block" id="btn-breed" ${pa && pb ? '' : 'disabled'}>Breed · ${breedCost()} coins</button>
+    </div>
+    <div class="egg-pair" style="margin-top:10px">
       <div class="card hatch-card">
         <div class="egg-wrap" id="egg-meadow">${eggSVG()}</div>
         <b>Meadow Egg</b>
@@ -1363,6 +1374,57 @@ function renderHatchery(body) {
         <div>${known || met ? sp.names[0] : '???'}</div><div class="lv">${known ? `${ELEMENTS[sp.el].name} · ${RARITY[sp.rarity].name}` : met ? 'Seen' : ''}</div></div>`;
     }).join('')}</div>`).join('')}`;
   body.querySelectorAll('[data-egg]').forEach((b) => (b.onclick = () => hatch(b.dataset.egg)));
+  body.querySelectorAll('[data-parent]').forEach((b) => (b.onclick = () => pickParent(Number(b.dataset.parent))));
+  $('#btn-breed').onclick = breed;
+}
+
+// ---------- breeding ----------
+const breedPick = [null, null];
+function breedCost() { return 150 + 25 * (S.bred || 0); }
+function pickParent(i) {
+  const other = breedPick[1 - i];
+  const list = S.roster.filter((c) => c.uid !== other).sort((a, b) => stars(b.roll) - stars(a.roll) || b.traits.length - a.traits.length);
+  const sheet = openModal(`<h2>Choose parent ${i + 1}</h2><p class="hint">Parents stay with you. Strong stars and traits are worth passing on.</p>
+    <div class="grid" style="margin-top:8px">${list.map(monCard).join('')}</div><button class="btn block" data-act="back" style="margin-top:10px">Back</button>`);
+  sheet.querySelector('[data-act=back]').onclick = closeModal;
+  sheet.querySelectorAll('.mon').forEach((el) => (el.onclick = () => { breedPick[i] = Number(el.dataset.uid); closeModal(); refreshPanel(); }));
+}
+let breeding = false;
+function breed() {
+  const a = byUid(breedPick[0]), b = byUid(breedPick[1]);
+  if (!a || !b || breeding) return;
+  const cost = breedCost();
+  if (S.coins < cost) { toast(`You need ${cost} coins to breed.`); return; }
+  breeding = true;
+  S.coins -= cost; S.bred = (S.bred || 0) + 1;
+  const base = Math.random() < 0.5 ? a : b;
+  const sp = SPECIES_BY_ID[base.id];
+  // Stars: the parents' average, nudged randomly, with a small chance to beat both.
+  const mixStat = (x, y) => Math.max(0, Math.min(1, Math.round(((x + y) / 2 + (Math.random() - 0.4) * 0.3) * 100) / 100));
+  const roll = { a: mixStat(a.roll.a, b.roll.a), h: mixStat(a.roll.h, b.roll.h) };
+  const inherited = [];
+  for (const k of [...new Set([...a.traits, ...b.traits])].sort(() => Math.random() - 0.5)) {
+    if (inherited.length < 3 && Math.random() < 0.45 && !EXCLUSIVE_TRAITS.some((g) => g.includes(k) && g.some((o) => inherited.includes(o)))) inherited.push(k);
+  }
+  const target = Math.max(inherited.length, RARITY[sp.rarity].traits);
+  const traits = [...inherited];
+  for (const k of rollTraits(sp, 3)) if (traits.length < target && !traits.includes(k) && !EXCLUSIVE_TRAITS.some((g) => g.includes(k) && g.some((o) => traits.includes(o)))) traits.push(k);
+  const sameKind = [a, b].filter((p) => p.id === base.id);
+  const ab = Math.random() < 0.8 ? rand(sameKind).ab || 0 : Math.floor(Math.random() * sp.abilities.length);
+  const shiny = Math.random() < (a.shiny || b.shiny ? 1 / 16 : 1 / 128);
+  const c = giveCreature({ id: base.id, lvl: 3, xp: 0, roll, traits, ab, skills: defaultSkills(base.id, 3, ab), shiny });
+  save(); updateHud();
+  const egg = $('#egg-breed');
+  egg.classList.add('wobble');
+  setTimeout(() => {
+    egg.innerHTML = eggSVG(true);
+    setTimeout(() => {
+      breeding = false;
+      const note = `Inherited: ${inherited.map((k) => TRAITS[k].name).join(', ') || 'no traits this time'}. ${S.team.includes(c.uid) ? 'They joined your team!' : 'They are resting at Home.'}`;
+      const sheet = openModal(revealHTML(c, 'A baby is born!', note) + '<button class="btn primary block" data-close style="margin-top:12px">So cute!</button>');
+      sheet.querySelector('[data-close]').onclick = () => { closeModal(); refreshPanel(); };
+    }, 350);
+  }, 1200);
 }
 
 function eggRegionMax() { return Math.min(4, 1 + Math.floor(S.crests / 2)); }
