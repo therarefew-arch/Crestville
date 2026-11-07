@@ -2,6 +2,16 @@
 
 The version shows at the bottom of the game screen. Each update adds 1.
 
+## v0.0.04
+- Settings button at the top: music on/off, battle speed, save, and start a new game.
+- Right Joy-Con is now a small Team button and a big A button.
+- Town name shows as a label on the game screen.
+- Town layouts are random for each new game: roads leave towns north, east, west or south, and
+  buildings, ponds, grass, trees and people land in new spots. Every layout is checked so all
+  roads, doors and grass connect. Your save keeps the same world every time you load it.
+- Wild creatures get stronger the closer you get to a town's far gate, reaching about the
+  Champion's level. Town signs show the level range.
+
 ## v0.0.03
 - New controls: two Joy-Con halves. Drag the thumbstick to walk, push it all the way to run.
 - Save button (also still saves automatically) and a Music on/off button.

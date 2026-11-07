@@ -18,6 +18,9 @@ for (const [id, m] of Object.entries(maps)) {
   for (const n of m.npcs) for (const [sid] of (n.trainer ? n.trainer.team : [])) if (!SPECIES.find((s) => s.id === sid)) console.log(`!! unknown species ${sid}`);
 }
 // Every door, exit, NPC and patch of grass must be reachable from the map's entry points.
+// Towns are laid out from a seed, so check many different worlds.
+for (const seed of [20261107, ...Array.from({ length: 20 }, (_, i) => i + 1)]) {
+run(`buildWorld(${seed})`);
 for (const [id, m] of Object.entries(maps)) {
   const at = (x, y) => (m.tiles[y] || '')[x];
   const npcAt = (x, y) => m.npcs.some((n) => n.x === x && n.y === y);
@@ -34,9 +37,11 @@ for (const [id, m] of Object.entries(maps)) {
   for (const e of m.exits) { const back = maps[e.to].exits.some((b) => b.to === id); if (!back) console.log(`!! ${id}: exit to ${e.to} has no way back`); }
   let grass = 0, lost = 0;
   m.tiles.forEach((r, y) => [...r].forEach((c, x) => { if (c === ',') { grass++; if (!seen.has(x + ',' + y) && !npcAt(x, y)) lost++; } }));
-  if (lost) console.log(`!! ${id}: ${lost}/${grass} grass tiles unreachable`);
+  if (lost) console.log(`!! seed ${seed} ${id}: ${lost}/${grass} grass tiles unreachable`);
 }
-console.log(`maps ok: ${Object.keys(maps).length} maps`);
+}
+run('buildWorld(20261107)');
+console.log(`maps ok: ${Object.keys(maps).length} maps x 21 worlds`);
 
 const ids = new Set();
 for (const s of SPECIES) {

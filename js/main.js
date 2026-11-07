@@ -2,11 +2,13 @@
 
 const SAVE_KEY = 'crestville-save-v2';
 
+function newSeed() { return 1 + Math.floor(Math.random() * 1e9); }
+
 function freshState() {
   return {
     name: '', coins: 60, berries: 2, crests: 0,
     roster: [], team: [null, null, null, null, null], nextUid: 1,
-    eggCost: 100, trophies: 0, rivals: null, speed: 1, dust: 0, pity: 0, seen: [], visited: ['town'], lastTown: 'town', music: true,
+    eggCost: 100, trophies: 0, rivals: null, speed: 1, dust: 0, pity: 0, seen: [], visited: ['town'], lastTown: 'town', music: true, worldSeed: newSeed(),
     map: 'town', x: MAPS.town.start[0], y: MAPS.town.start[1], dir: 'down', beaten: {},
   };
 }
@@ -29,6 +31,7 @@ function migrate(st) {
   }
   st.roster = st.roster.filter((c) => SPECIES_BY_ID[c.id]);
   if (!st.visited.includes('town')) st.visited.unshift('town');
+  if (!st.worldSeed) st.worldSeed = newSeed();
   st.team = st.team.map((u) => (st.roster.some((c) => c.uid === u) ? u : null));
   return st;
 }
@@ -463,6 +466,16 @@ async function flashIn() {
 }
 
 // regions: list of region numbers, or a map's wild settings ({ regions } or { els }).
+// In towns, creatures get stronger the closer you are to the far gate,
+// reaching about the Champion's level right before you move on.
+function wildLevel(w) {
+  const m = World.map, p = World.player;
+  if (!m.entryPt) return randInt(w.min, w.max);
+  const d = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]);
+  const t = Math.max(0, Math.min(1, d([p.x, p.y], m.entryPt) / Math.max(1, d(m.exitPt, m.entryPt))));
+  return Math.max(w.min, Math.min(w.max, Math.round(w.min + (w.max - w.min) * t) + randInt(-1, 1)));
+}
+
 function pickWild(regions, faraway = false) {
   let test;
   if (Array.isArray(regions)) test = (s) => regions.includes(s.region);
@@ -483,7 +496,7 @@ async function wildEncounter() {
   const enemy = [];
   for (let i = 0; i < n; i++) {
     const sp = pickWild(w, visitor && i === 0);
-    enemy.push(rollCreature(sp.id, randInt(w.min, w.max)));
+    enemy.push(rollCreature(sp.id, wildLevel(w)));
   }
   S.seen = [...new Set([...(S.seen || []), ...enemy.map((e) => e.id)])];
   await flashIn();
@@ -1135,6 +1148,36 @@ function showIntro() {
   };
 }
 
+// ---------- settings ----------
+let confirmReset = false;
+function renderSettings(body) {
+  body.innerHTML = `
+    <div class="card settings">
+      <div class="set-row"><div><b>Music</b><small>Each town has its own song.</small></div>
+        <button class="btn small ${S.music ? 'primary' : ''}" id="set-music">${S.music ? 'On' : 'Off'}</button></div>
+      <div class="set-row"><div><b>Battle speed</b><small>How fast battles play out.</small></div>
+        <div class="seg">${[1, 2, 3].map((n) => `<button class="${S.speed === n ? 'on' : ''}" data-speed="${n}">${n}×</button>`).join('')}</div></div>
+      <div class="set-row"><div><b>Save game</b><small>The game also saves by itself as you play.</small></div>
+        <button class="btn small primary" id="set-save">Save</button></div>
+    </div>
+    <h3>Controls</h3>
+    <div class="card"><p class="hint">Drag the stick to walk. Push it all the way out to run. <b>A</b> talks, reads signs and opens doors.</p></div>
+    <h3>Start over</h3>
+    <div class="card">
+      <p class="hint">Begin a brand-new game with a newly shaped world. Your creatures and progress will be gone.</p>
+      <button class="btn block" id="set-reset" style="margin-top:8px">${confirmReset ? 'Tap again to erase and start over' : 'Start a new game'}</button>
+    </div>
+    <p class="hint center" style="margin-top:14px">Crestville ${VERSION}</p>`;
+  $('#set-music').onclick = () => { S.music = !S.music; save(); musicSetEnabled(S.music); refreshPanel(); };
+  body.querySelectorAll('[data-speed]').forEach((b) => (b.onclick = () => { S.speed = Number(b.dataset.speed); save(); refreshPanel(); }));
+  $('#set-save').onclick = () => { save(); toast('Game saved!'); };
+  $('#set-reset').onclick = () => {
+    if (!confirmReset) { confirmReset = true; refreshPanel(); return; }
+    try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
+    location.reload();
+  };
+}
+
 // ---------- input ----------
 function setupInput() {
   // Thumbstick: drag anywhere on the left Joy-Con. Push far to run.
@@ -1182,23 +1225,13 @@ function setupInput() {
   $('#btn-a').onclick = interact;
   $('#dialog').onclick = advanceDialog;
   $('#btn-team').onclick = () => { if (!busy && !dialogOpen) openPanel('Team', renderTeam); };
-  $('#btn-save').onclick = () => { save(); toast('Game saved!'); };
-  $('#btn-music').onclick = () => {
-    S.music = !S.music; save();
-    musicSetEnabled(S.music);
-    updateMusicButton();
-    toast(S.music ? 'Music on' : 'Music off');
-  };
+  $('#btn-settings').onclick = () => { if (!busy && !dialogOpen) openPanel('Settings', renderSettings); };
   $('#panel-close').onclick = closePanel;
   $('#modal').onclick = (e) => { if (e.target.id === 'modal' && S.roster.length) closeModal(); };
   $('#b-speed').onclick = () => { S.speed = S.speed === 1 ? 2 : S.speed === 2 ? 3 : 1; $('#b-speed').textContent = S.speed + '×'; save(); };
   $('#b-skip').onclick = () => { BUI.skip = true; };
 }
 let heldDir = null;
-function updateMusicButton() {
-  $('#btn-music').classList.toggle('off', !S.music);
-  $('#music-label').textContent = S.music ? 'Music' : 'Muted';
-}
 
 // Keep the world's held direction in sync with input while not paused.
 function inputTick() {
@@ -1211,11 +1244,15 @@ function init() {
   document.querySelectorAll('[data-icon]').forEach((el) => (el.innerHTML = ICONS[el.dataset.icon]));
   $('#version').textContent = VERSION;
   Music.enabled = S.music !== false;
-  updateMusicButton();
   setupInput();
+  buildWorld(S.worldSeed);
+  save();
   const map = MAPS[S.map] ? S.map : 'town';
   worldInit($('#world'), { onStep, onDoor: (b) => enterBuilding(b), leadCreature });
-  enterMap(map, S.x, S.y, S.dir);
+  // Saves from before random layouts may point at a spot that's now a tree.
+  const okSpot = (m, x, y) => { const c = (MAPS[m].tiles[y] || '')[x]; return c && !'T~#BS^'.includes(c) && !MAPS[m].npcs.some((n) => n.x === x && n.y === y); };
+  if (okSpot(map, S.x, S.y)) enterMap(map, S.x, S.y, S.dir);
+  else enterMap(map, MAPS[map].start[0], MAPS[map].start[1], 'down');
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => worldBake());
   updateHud();
   inputTick();

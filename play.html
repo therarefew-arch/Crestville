@@ -10,7 +10,8 @@
     <header class="topbar">
       <div class="brand">
         <svg viewBox="0 0 24 24" class="brand-crest" aria-hidden="true"><path d="M12 2 L20 5 V11 C20 16 16.5 20 12 22 C7.5 20 4 16 4 11 V5 Z" fill="#e88c7d" stroke="#5b4636" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 13 L11 9 L13 12 L14.5 10.5 L17 13" fill="none" stroke="#fffaf0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span id="map-name">Crestville</span>
+        <span class="brand-name">Crestville</span>
+        <button class="gear-btn" id="btn-settings" aria-label="Settings"><span class="ico" data-icon="gear"></span></button>
       </div>
       <div class="pills">
         <span class="pill" title="Coins"><span class="coin"></span><b id="coins">0</b></span>
@@ -21,6 +22,7 @@
 
     <div class="world" id="world-wrap">
       <canvas id="world"></canvas>
+      <div class="map-chip" id="map-name">Crestville</div>
       <div class="flash" id="flash"></div>
       <div class="dialog hidden" id="dialog"><div class="who" id="dialog-who"></div><div id="dialog-text"></div><div class="more">▼</div></div>
     </div>
@@ -36,8 +38,6 @@
         <span class="jc-mini" aria-hidden="true">+</span>
         <div class="jc-face">
           <button class="face-btn" id="btn-team" aria-label="Team"><span class="ico" data-icon="team"></span><small>Team</small></button>
-          <button class="face-btn" id="btn-save" aria-label="Save game"><span class="ico" data-icon="save"></span><small>Save</small></button>
-          <button class="face-btn" id="btn-music" aria-label="Music on or off"><span class="ico" data-icon="music"></span><small id="music-label">Music</small></button>
           <button class="a-btn" id="btn-a" aria-label="Talk or interact">A</button>
         </div>
       </div>

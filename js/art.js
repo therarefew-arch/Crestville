@@ -181,6 +181,7 @@ function eggSVG(cracked = false, mystery = false) {
 }
 
 const ICONS = {
+  gear: '<svg viewBox="0 0 24 24"><path d="M12 3 L13.6 5.2 L16.3 4.6 L16.9 7.3 L19.4 8.4 L18.4 11 L19.9 13.3 L17.6 14.8 L17.5 17.6 L14.8 17.7 L13.3 20 L11 18.8 L8.6 20 L7.2 17.7 L4.5 17.5 L4.5 14.8 L2.3 13.2 L3.8 10.9 L2.9 8.3 L5.4 7.3 L6 4.6 L8.7 5.2 Z" fill="currentColor" opacity=".25" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="11.2" cy="12.2" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   save: '<svg viewBox="0 0 24 24"><path d="M5 4 H16 L20 8 V19 A1 1 0 0 1 19 20 H5 A1 1 0 0 1 4 19 V5 A1 1 0 0 1 5 4 Z M8 4 V9 H15 V4 M8 20 V14 H16 V20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg>',
   music: '<svg viewBox="0 0 24 24"><path d="M9 18 V6 L19 4 V16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><circle cx="7" cy="18" r="2.6" fill="currentColor"/><circle cx="17" cy="16" r="2.6" fill="currentColor"/></svg>',
   team: '<svg viewBox="0 0 24 24"><circle cx="12" cy="15" r="4.5" fill="currentColor" opacity=".35"/><g fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="15" r="4.5"/><circle cx="6" cy="9" r="2"/><circle cx="10" cy="5.5" r="2"/><circle cx="14" cy="5.5" r="2"/><circle cx="18" cy="9" r="2"/></g></svg>',

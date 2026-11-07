@@ -86,92 +86,245 @@ const VILLAGER_LOOKS = [
 ];
 
 function seeded(seed) {
-  let s = seed >>> 0;
+  let s = (seed >>> 0) || 1;
   return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
 }
 
-function buildTown(def, index) {
-  const W = 18, H = 26, rnd = seeded(def.seed);
-  const g = Array.from({ length: H }, (_, y) => Array.from({ length: W }, (_, x) => (x === 0 || x === W - 1 || y === 0 || y === H - 1 ? 'T' : '.')));
-  const set = (x, y, c) => { if (x > 0 && x < W - 1 && y > 0 && y < H - 1) g[y][x] = c; };
-  const last = index === TOWN_DEFS.length - 1;
+// How much of each kind of scenery a theme gets.
+const LAYOUT = {
+  willow: { water: 2, groves: 3, deco: 5, flowers: 3 }, sunpetal: { water: 1, groves: 2, deco: 5, flowers: 6 },
+  ember: { water: 2, groves: 2, deco: 7, flowers: 1 }, harbor: { water: 3, groves: 2, deco: 6, flowers: 2 },
+  swamp: { water: 3, groves: 4, deco: 6, flowers: 2 }, lantern: { water: 1, groves: 4, deco: 7, flowers: 2 },
+  desert: { water: 1, groves: 2, deco: 8, flowers: 1 }, cog: { water: 1, groves: 3, deco: 8, flowers: 1 },
+  frost: { water: 1, groves: 5, deco: 6, flowers: 1 }, sky: { water: 4, groves: 2, deco: 5, flowers: 3 },
+};
+const SIDES = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
+const OPPOSITE = { N: 'S', S: 'N', E: 'W', W: 'E' };
+const DIR_NAME = { N: 'North', S: 'South', E: 'East', W: 'West' };
+const FACE = { '1,0': 'right', '-1,0': 'left', '0,1': 'down', '0,-1': 'up' };
 
-  // Main path from the south gate to the north gate.
-  for (let y = 0; y < H; y++) { g[y][8] = '='; g[y][9] = '='; }
-  if (last) { g[0][8] = 'T'; g[0][9] = 'T'; }
-  // Buildings: Market (left) and Travel Post (right), joined by the plaza path.
-  for (let y = 2; y <= 4; y++) for (let x = 2; x <= 5; x++) g[y][x] = 'B';
-  for (let y = 2; y <= 4; y++) for (let x = 12; x <= 15; x++) g[y][x] = 'B';
-  g[5][4] = '='; g[5][13] = '=';
-  for (let x = 4; x <= 13; x++) g[6][x] = '=';
+function gateOn(side, W, H, r) {
+  if (side === 'N' || side === 'S') {
+    const x = 3 + Math.floor(r() * (W - 7)), y = side === 'N' ? 0 : H - 1, iy = side === 'N' ? 1 : H - 2;
+    return { side, cells: [[x, y], [x + 1, y]], inside: [[x, iy], [x + 1, iy]] };
+  }
+  const y = 3 + Math.floor(r() * (H - 7)), x = side === 'W' ? 0 : W - 1, ix = side === 'W' ? 1 : W - 2;
+  return { side, cells: [[x, y], [x, y + 1]], inside: [[ix, y], [ix, y + 1]] };
+}
 
-  // Water (or lava, or cloud sea) feature and scenery in the middle.
-  const pondLeft = rnd() < 0.5;
-  const px = pondLeft ? 2 : 12;
-  for (let y = 8; y <= 10; y++) for (let x = px; x <= px + 3; x++) g[y][x] = '~';
-  for (let x = pondLeft ? 12 : 2, n = 0; n < 4; n++) set(x + n, 9, 'f');
+// Lays out one town at random, then checks every road, door, person and patch of grass
+// can be reached. Returns null when a layout doesn't work, so the caller tries again.
+function layoutTown(def, index, r, entrySide, exitSide) {
+  const W = 18 + Math.floor(r() * 6), H = 20 + Math.floor(r() * 8);
+  const L = LAYOUT[def.theme];
+  const g = Array.from({ length: H }, (_, y) => Array.from({ length: W }, (_, x) => (x === 0 || y === 0 || x === W - 1 || y === H - 1 ? 'T' : '.')));
+  const inMap = (x, y) => x > 0 && y > 0 && x < W - 1 && y < H - 1;
+  const at = (x, y) => (g[y] ? g[y][x] : undefined);
+  const ri = (a, b) => a + Math.floor(r() * (b - a + 1));
+  const entry = gateOn(entrySide, W, H, r);
+  const exit = exitSide ? gateOn(exitSide, W, H, r) : null;
+  for (const gt of [entry, exit]) if (gt) for (const [x, y] of gt.cells) g[y][x] = '=';
+  const nearGate = (x, y, d) => [entry, exit].some((gt) => gt && gt.inside.some(([gx, gy]) => Math.abs(gx - x) <= d && Math.abs(gy - y) <= d));
 
-  // Two bands of tall grass on both sides of the path.
-  for (const [y0, y1] of [[12, 15], [18, 21]]) {
-    for (let y = y0; y <= y1; y++) {
-      for (let x = 1; x <= 6; x++) if (rnd() < 0.86) g[y][x] = ',';
-      for (let x = 11; x <= 16; x++) if (rnd() < 0.86) g[y][x] = ',';
+  // Two buildings: Market and Travel Post.
+  const buildings = [];
+  for (const [label, action, roof] of [['Market', 'market', THEMES[def.theme].canopy[0]], ['Travel', 'travel', '#e88c7d']]) {
+    let placed = false;
+    for (let t = 0; t < 80 && !placed; t++) {
+      const bx = ri(2, W - 6), by = ri(2, H - 6);
+      let ok = true;
+      for (let y = by - 1; y <= by + 4 && ok; y++) for (let x = bx - 1; x <= bx + 4 && ok; x++) if (!inMap(x, y) || at(x, y) !== '.' || nearGate(x, y, 3)) ok = false;
+      if (!ok) continue;
+      for (let y = by; y < by + 3; y++) for (let x = bx; x < bx + 4; x++) g[y][x] = 'B';
+      const door = [bx + ri(1, 2), by + 2];
+      buildings.push({ x: bx, y: by, w: 4, h: 3, door, front: [door[0], by + 3], roof, label, action });
+      placed = true;
+    }
+    if (!placed) return null;
+  }
+
+  // Roads: entrance → plaza → exit (2 wide), and a lane to each door.
+  const road = (a, b, wide) => {
+    const [x0, y0] = a, [x1, y1] = b;
+    const pts = [];
+    const hFirst = r() < 0.5;
+    const corner = hFirst ? [x1, y0] : [x0, y1];
+    const seg = ([ax, ay], [bx, by]) => {
+      const dx = Math.sign(bx - ax), dy = Math.sign(by - ay);
+      let x = ax, y = ay;
+      pts.push([x, y, dx !== 0]);
+      while (x !== bx || y !== by) { x += dx; y += dy; pts.push([x, y, dx !== 0]); }
+    };
+    seg(a, corner); seg(corner, b);
+    for (const [x, y, horiz] of pts) {
+      if (inMap(x, y) && at(x, y) !== 'B') g[y][x] = '=';
+      if (wide) { const nx = horiz ? x : x + 1, ny = horiz ? y + 1 : y; if (inMap(nx, ny) && at(nx, ny) === '.') g[ny][nx] = '='; }
+    }
+  };
+  const plaza = [ri(Math.floor(W * 0.35), Math.floor(W * 0.6)), ri(Math.floor(H * 0.35), Math.floor(H * 0.6))];
+  road(entry.inside[0], plaza, true);
+  if (exit) road(plaza, exit.inside[0], true);
+  for (const b of buildings) road(b.front, plaza, false);
+
+  const roadNear = (x, y, d) => { for (let yy = y - d; yy <= y + d; yy++) for (let xx = x - d; xx <= x + d; xx++) if (at(xx, yy) === '=') return true; return false; };
+  const fits = (x0, y0, w, h, pred) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) if (!inMap(x, y) || !pred(x, y)) return false; return true; };
+
+  // Water (or lava, or cloud sea).
+  for (let i = 0; i < L.water; i++) for (let t = 0; t < 40; t++) {
+    const w = ri(2, 5), h = ri(2, 3), x0 = ri(1, W - w - 1), y0 = ri(1, H - h - 1);
+    if (!fits(x0, y0, w, h, (x, y) => at(x, y) === '.' && !roadNear(x, y, 1) && !nearGate(x, y, 2))) continue;
+    for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) if (!((y === y0 || y === y0 + h - 1) && (x === x0 || x === x0 + w - 1) && r() < 0.5)) g[y][x] = '~';
+    break;
+  }
+  // Tall grass patches.
+  const patches = ri(4, 6);
+  for (let i = 0; i < patches; i++) for (let t = 0; t < 40; t++) {
+    const w = ri(3, 6), h = ri(3, 5), x0 = ri(1, W - w - 1), y0 = ri(1, H - h - 1);
+    if (!fits(x0, y0, w, h, (x, y) => at(x, y) === '.' || at(x, y) === ',')) continue;
+    for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) if (r() < 0.88 && !nearGate(x, y, 1)) g[y][x] = ',';
+    break;
+  }
+  // Flowers, tree groves and scenery, kept off the roadside so paths stay clear.
+  for (let i = 0; i < L.flowers; i++) { const x = ri(1, W - 2), y = ri(1, H - 2); for (let k = 0; k < 3; k++) if (at(x + k, y) === '.') g[y][x + k] = 'f'; }
+  for (let i = 0; i < L.groves; i++) {
+    let x = ri(2, W - 3), y = ri(2, H - 3);
+    for (let k = ri(2, 5); k > 0; k--) {
+      if (at(x, y) === '.' && !roadNear(x, y, 1) && !nearGate(x, y, 2)) g[y][x] = 'T';
+      x += ri(-1, 1); y += ri(-1, 1);
     }
   }
-
-  // Scatter scenery: obstacles (^) and a few trees, kept away from the path and doors.
-  const free = [];
-  for (let y = 7; y < H - 2; y++) for (let x = 1; x < W - 1; x++) if (g[y][x] === '.' && (x < 6 || x > 11) && y !== 16 && y !== 17) free.push([x, y]);
-  for (let i = 0; i < 9 && free.length; i++) {
-    const [x, y] = free.splice(Math.floor(rnd() * free.length), 1)[0];
-    g[y][x] = i < 5 ? '^' : 'T';
+  for (let i = 0; i < L.deco; i++) for (let t = 0; t < 20; t++) {
+    const x = ri(1, W - 2), y = ri(1, H - 2);
+    if (at(x, y) === '.' && !roadNear(x, y, 1) && !nearGate(x, y, 2)) { g[y][x] = '^'; break; }
   }
-  g[23][11] = 'S';
+
+  // Sign by the entrance.
+  let sign = null;
+  for (let t = 0; t < 60 && !sign; t++) {
+    const [ix, iy] = entry.inside[0];
+    const x = ix + ri(-3, 3), y = iy + ri(-3, 3);
+    if (at(x, y) === '.' && roadNear(x, y, 1) && !nearGate(x, y, 0)) { g[y][x] = 'S'; sign = [x, y]; }
+  }
+
+  const blocked = (x, y) => 'T~#BS^'.includes(at(x, y) || 'T');
+  const npcs = [];
+  const taken = (x, y) => npcs.some((n) => Math.abs(n.x - x) + Math.abs(n.y - y) < 3) || buildings.some((b) => b.front[0] === x && b.front[1] === y);
+  // Someone standing next to the road, facing it, who will see you pass.
+  const lookout = (pred, maxReach) => {
+    for (let t = 0; t < 400; t++) {
+      const x = ri(1, W - 2), y = ri(1, H - 2);
+      if (blocked(x, y) || at(x, y) === '=' || taken(x, y) || nearGate(x, y, 1) || !pred(x, y)) continue;
+      for (const [dx, dy] of Object.values(SIDES).sort(() => r() - 0.5)) {
+        for (let k = 1; k <= maxReach; k++) {
+          const cx = x + dx * k, cy = y + dy * k;
+          if (blocked(cx, cy)) break;
+          if (at(cx, cy) === '=') return { x, y, dir: FACE[`${dx},${dy}`] };
+        }
+      }
+    }
+    return null;
+  };
+  const exitPt = exit ? exit.inside[0] : plaza;
+  const champSpot = lookout((x, y) => Math.abs(x - exitPt[0]) + Math.abs(y - exitPt[1]) <= 5, 1) || lookout(() => true, 1);
+  const t1 = lookout((x, y) => at(x, y) === ',', 4);
+  const t2 = t1 && lookout((x, y) => at(x, y) === ',' && Math.abs(x - t1.x) + Math.abs(y - t1.y) > 6, 4);
+  const v1 = lookout(() => true, 1);
+  const v2 = v1 && lookout(() => true, 2);
+  if (!champSpot || !t1 || !t2 || !v1 || !v2) return null;
 
   const look = (i) => VILLAGER_LOOKS[(index + i) % VILLAGER_LOOKS.length];
   const [lo, hi] = def.lv;
   const pool = SPECIES.filter((s) => !def.els || def.els.includes(s.el));
-  const pick = (r) => pool[Math.floor(r() * pool.length)].id;
-  const team = (n, lvl, r) => Array.from({ length: n }, () => [pick(r), lvl]);
-  const tr = seeded(def.seed * 7);
+  const pick = () => pool[Math.floor(r() * pool.length)].id;
+  const team = (n, lvl) => Array.from({ length: n }, () => [pick(), lvl]);
+  const last = !exit;
+  const mid = Math.round((lo + hi) / 2);
+  npcs.push(
+    { id: `${def.id}-v1`, ...v1, look: 'v', lookObj: look(0), name: 'Villager', lines: [def.lines[0]] },
+    { id: `${def.id}-v2`, ...v2, look: 'v', lookObj: look(1), name: 'Villager', lines: [def.lines[1]] },
+    { id: `${def.id}-t1`, ...t1, look: 'v', lookObj: look(2), name: 'Wanderer',
+      trainer: { team: team(3, lo + 2), coins: 30 + lo * 6, before: 'You look strong. Let\'s see your lineup!', after: 'Good battle. Good luck with the Champion!' } },
+    { id: `${def.id}-t2`, ...t2, look: 'v', lookObj: look(3), name: 'Ranger',
+      trainer: { team: team(4, mid), coins: 40 + lo * 7, before: 'These parts are wild. Are you ready?', after: 'The grass nearer the far gate hides tougher creatures.' } },
+    { id: `${def.id}-champ`, ...champSpot, look: 'v', lookObj: def.look, name: def.champ, boss: true,
+      trainer: { team: team(5, hi), coins: 150 + hi * 12, crest: index + 1, quality: 0.6,
+        before: `I'm ${def.champ}, and this is ${def.name}. Show me what you and your team can do!`,
+        after: `You've earned the ${TOWN_CRESTS[index + 1].name}. ${last ? 'You are a true Crestville legend.' : 'The road onward is open.'}` } },
+  );
 
+  // Everything important must be reachable from the entrance.
+  const npcAtXY = (x, y) => npcs.some((n) => n.x === x && n.y === y);
+  const walk = (x, y) => at(x, y) !== undefined && !blocked(x, y) && !npcAtXY(x, y);
+  const seen = new Set([entry.inside[0].join(',')]);
+  const q = [entry.inside[0]];
+  while (q.length) {
+    const [x, y] = q.shift();
+    for (const [dx, dy] of Object.values(SIDES)) { const k = `${x + dx},${y + dy}`; if (!seen.has(k) && walk(x + dx, y + dy)) { seen.add(k); q.push([x + dx, y + dy]); } }
+  }
+  const reach = ([x, y]) => seen.has(`${x},${y}`);
+  const besideReach = (x, y) => Object.values(SIDES).some(([dx, dy]) => seen.has(`${x + dx},${y + dy}`));
+  if (exit && !exit.cells.every(reach)) return null;
+  if (!entry.cells.every(reach)) return null;
+  if (!buildings.every((b) => reach(b.front))) return null;
+  if (!npcs.every((n) => besideReach(n.x, n.y))) return null;
+  if (sign && !besideReach(sign[0], sign[1])) return null;
+  // Close off any pockets you couldn't walk into anyway.
+  for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) if (walk(x, y) && !seen.has(`${x},${y}`)) g[y][x] = 'T';
+  let grass = 0;
+  for (const row of g) for (const c of row) if (c === ',') grass++;
+  if (grass < 18) return null;
+
+  const travel = buildings.find((b) => b.action === 'travel');
+  const where = exit ? `${DIR_NAME[exit.side]}: the road onward. Beat ${def.champ} to open the gate.` : 'This is the summit. The sky ends here.';
   return {
     name: def.name, theme: def.theme, music: THEMES[def.theme].music, town: true,
     tiles: g.map((row) => row.join('')),
-    buildings: [
-      { x: 2, y: 2, w: 4, h: 3, door: [4, 4], roof: THEMES[def.theme].canopy[0], label: 'Market', action: 'market' },
-      { x: 12, y: 2, w: 4, h: 3, door: [13, 4], roof: '#e88c7d', label: 'Travel', action: 'travel' },
-    ],
-    signs: { '11,23': `Welcome to ${def.name}! ${last ? 'This is the summit. The sky ends here.' : `North: the road onward. Beat ${def.champ} to open the gate.`}` },
-    npcs: [
-      { id: `${def.id}-v1`, x: 6, y: 7, dir: 'down', look: 'v', lookObj: look(0), name: 'Villager', lines: [def.lines[0]] },
-      { id: `${def.id}-v2`, x: 14, y: 16, dir: 'left', look: 'v', lookObj: look(1), name: 'Villager', lines: [def.lines[1]] },
-      { id: `${def.id}-t1`, x: 6, y: 13, dir: 'right', look: 'v', lookObj: look(2), name: 'Wanderer',
-        trainer: { team: team(3, lo + 1, tr), coins: 30 + lo * 6, before: 'You look strong. Let\'s see your lineup!', after: 'Good battle. Good luck with the Champion!' } },
-      { id: `${def.id}-t2`, x: 11, y: 19, dir: 'left', look: 'v', lookObj: look(3), name: 'Ranger',
-        trainer: { team: team(4, Math.round((lo + hi) / 2), tr), coins: 40 + lo * 7, before: 'These parts are wild. Are you ready?', after: 'The grass here hides some rare ones.' } },
-      { id: `${def.id}-champ`, x: 7, y: 3, dir: 'right', look: 'v', lookObj: def.look, name: def.champ, boss: true,
-        trainer: { team: team(5, hi, tr), coins: 150 + hi * 12, crest: index + 1, quality: 0.6,
-          before: `I'm ${def.champ}, and this is ${def.name}. Show me what you and your team can do!`,
-          after: `You've earned the ${TOWN_CRESTS[index + 1].name}. ${last ? 'You are a true Crestville legend.' : 'The road north is open.'}` } },
-    ],
-    exits: [
-      ...(last ? [] : [8, 9].map((x) => ({ x, y: 0, to: TOWN_DEFS[index + 1].id, tx: x, ty: H - 2, need: index + 2 }))),
-      ...[8, 9].map((x) => (index === 0 ? { x, y: H - 1, to: 'grove', tx: x - 1, ty: 1 } : { x, y: H - 1, to: TOWN_DEFS[index - 1].id, tx: x, ty: 1 })),
-    ],
+    buildings: buildings.map(({ front, ...b }) => b),
+    signs: sign ? { [`${sign[0]},${sign[1]}`]: `Welcome to ${def.name}! Wild creatures here are Lv ${lo}-${hi}, getting stronger toward the far gate. ${where}` } : {},
+    npcs, exits: [], entry, exit,
+    entryPt: entry.inside[0], exitPt: exit ? exit.inside[0] : plaza,
     wild: { min: lo, max: hi, pack: 3, els: def.els },
-    start: [13, 5],
+    start: travel ? [travel.door[0], travel.door[1] + 1] : entry.inside[0],
   };
 }
 
-TOWN_DEFS.forEach((def, i) => { MAPS[def.id] = buildTown(def, i); });
+// Builds the 10 towns for this save. Same seed, same world; a new game gets a new one.
+function buildWorld(seed) {
+  const pickSide = (r, not) => {
+    const opts = [['N', 3], ['E', 2], ['W', 2], ['S', 1]].filter(([s]) => s !== not);
+    let roll = r() * opts.reduce((a, [, w]) => a + w, 0);
+    for (const [s, w] of opts) { roll -= w; if (roll <= 0) return s; }
+    return opts[0][0];
+  };
+  const pr = seeded(seed);
+  let entrySide = 'S';
+  const towns = [];
+  TOWN_DEFS.forEach((def, i) => {
+    const exitSide = i === TOWN_DEFS.length - 1 ? null : pickSide(pr, entrySide);
+    let m = null;
+    for (let attempt = 0; !m && attempt < 200; attempt++) m = layoutTown(def, i, seeded(seed * 31 + def.seed * 1013 + attempt * 7919), entrySide, exitSide);
+    towns.push(m);
+    entrySide = exitSide && OPPOSITE[exitSide];
+  });
+  towns.forEach((m, i) => {
+    const prevCells = i === 0 ? [[7, 1], [8, 1]] : towns[i - 1].exit.inside;
+    const prevId = i === 0 ? 'grove' : TOWN_DEFS[i - 1].id;
+    m.entry.cells.forEach(([x, y], k) => m.exits.push({ x, y, to: prevId, tx: prevCells[k][0], ty: prevCells[k][1] }));
+    if (m.exit) m.exit.cells.forEach(([x, y], k) => m.exits.push({ x, y, to: TOWN_DEFS[i + 1].id, tx: towns[i + 1].entry.inside[k][0], ty: towns[i + 1].entry.inside[k][1], need: i + 2 }));
+    MAPS[TOWN_DEFS[i].id] = m;
+  });
+  const w = towns[0].entry.inside;
+  MAPS.grove.exits = MAPS.grove.exits.filter((e) => e.to !== 'willowmere');
+  MAPS.grove.exits.push({ x: 7, y: 0, to: 'willowmere', tx: w[0][0], ty: w[0][1], need: 1 }, { x: 8, y: 0, to: 'willowmere', tx: w[1][0], ty: w[1][1], need: 1 });
+}
 
 // The grove now opens north to Willowmere once Rowan's crest is earned.
 MAPS.grove.tiles[0] = 'TTTTTTT==TTTTTTT';
 MAPS.grove.tiles[1] = 'TTTT..S==...TTTT';
 MAPS.grove.signs = { '6,1': 'North: Willowmere. Tamer Rowan\'s Meadow Crest opens the way.' };
-MAPS.grove.exits.push({ x: 7, y: 0, to: 'willowmere', tx: 8, ty: 24, need: 1 }, { x: 8, y: 0, to: 'willowmere', tx: 9, ty: 24, need: 1 });
 for (const id of ['town', 'route', 'grove']) { MAPS[id].theme = 'meadow'; MAPS[id].music = 'meadow'; }
 MAPS.town.town = true;
 // Crestville's coach driver offers fast travel.
 MAPS.town.npcs.push({ id: 'coach', x: 10, y: 7, dir: 'down', look: 'v', lookObj: { skin: '#e8b892', hair: '#7a5236', shirt: '#e88c7d', pants: '#5b4636', hat: '#5b4636' }, name: 'Coach Driver Bea', action: 'travel' });
+// A default world so tools and first load always have towns; the game rebuilds it from the save's seed.
+buildWorld(20261107);

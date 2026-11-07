@@ -50,7 +50,14 @@ p { margin: 4px 0; }
 
 /* Top bar */
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; }
-.brand { display: flex; align-items: center; gap: 6px; font-size: 19px; font-weight: 600; min-width: 0; white-space: nowrap; }
+.brand { display: flex; align-items: center; gap: 6px; font-size: 19px; font-weight: 600; min-width: 0; flex: 1; white-space: nowrap; }
+.brand-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.map-chip {
+  position: absolute; top: 8px; left: 10px; z-index: 1; pointer-events: none; max-width: calc(100% - 20px);
+  background: rgba(255, 250, 240, .92); border: 2px solid var(--ink); border-radius: 999px; padding: 2px 12px;
+  font-family: 'Fredoka', sans-serif; font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+@media (max-width: 379px) { .brand-name { display: none; } .pill { font-size: 13px; } }
 .brand-crest { width: 24px; height: 24px; transform: rotate(-6deg); flex: none; }
 .pills { display: flex; gap: 5px; }
 .pill {
@@ -110,7 +117,7 @@ p { margin: 4px 0; }
 }
 .stick-knob::after { content: ''; position: absolute; inset: 12px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .18); }
 .stick.on .stick-knob { transition: none; }
-.jc-face { display: grid; grid-template-columns: auto auto; grid-template-rows: auto auto; gap: 6px 10px; align-items: center; }
+.jc-face { position: relative; width: 100%; height: 100%; }
 .face-btn {
   width: 50px; height: 50px; border-radius: 50%; border: 2.5px solid var(--ink); background: #fffaf0; color: var(--ink);
   box-shadow: 0 3px 0 var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0; cursor: pointer;
@@ -120,14 +127,22 @@ p { margin: 4px 0; }
 .face-btn small { font-family: 'Fredoka', sans-serif; font-size: 10px; line-height: 1; margin-top: 1px; }
 .face-btn.off { opacity: .55; }
 .a-btn {
-  width: 66px; height: 66px; border-radius: 50%; border: 2.5px solid var(--ink); background: #fffaf0; color: var(--coral-dark);
-  font-size: 28px; font-weight: 700; box-shadow: 0 4px 0 var(--ink); cursor: pointer;
+  position: absolute; right: 14%; bottom: 18px;
+  width: 92px; height: 92px; border-radius: 50%; border: 2.5px solid var(--ink); background: #fffaf0; color: var(--coral-dark);
+  font-size: 38px; font-weight: 700; box-shadow: 0 5px 0 var(--ink); cursor: pointer;
 }
 .a-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
-.jc-face #btn-team { grid-column: 1; grid-row: 1; }
-.jc-face #btn-save { grid-column: 1; grid-row: 2; }
-.jc-face #btn-music { grid-column: 2; grid-row: 1; justify-self: center; }
-.jc-face .a-btn { grid-column: 2; grid-row: 2; }
+.jc-face #btn-team { position: absolute; left: 10%; top: 14px; width: 46px; height: 46px; }
+.gear-btn {
+  width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--ink); background: var(--card); color: var(--ink);
+  box-shadow: 0 2px 0 var(--ink); padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; flex: none; margin-left: 4px;
+}
+.gear-btn .ico svg { width: 20px; height: 20px; display: block; }
+.gear-btn:active { transform: translateY(2px); box-shadow: none; }
+.settings { display: flex; flex-direction: column; gap: 12px; }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.set-row b { display: block; font-family: 'Fredoka', sans-serif; font-weight: 600; font-size: 16px; }
+.set-row small { color: var(--ink-soft); font-size: 12px; }
 
 /* Buttons */
 .btn {
@@ -392,9 +407,9 @@ button.skill { font: inherit; font-size: 13px; border: 2px dashed #e9cf9a; curso
   .joycon { height: 138px; }
   .stick { width: 94px; height: 94px; }
   .stick-knob { width: 48px; height: 48px; margin: -24px 0 0 -24px; }
-  .face-btn { width: 42px; height: 42px; }
   .face-btn small { display: none; }
-  .a-btn { width: 56px; height: 56px; font-size: 24px; }
+  .jc-face #btn-team { width: 40px; height: 40px; top: 10px; left: 8%; }
+  .a-btn { width: 76px; height: 76px; font-size: 32px; right: 10%; bottom: 14px; }
   .padbar { padding: 6px 10px 16px; }
   .jc-hint { display: none; }
 }

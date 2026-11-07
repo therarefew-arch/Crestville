@@ -7,6 +7,8 @@
 > Frostpeak, Starfall Summit), each with its own theme, ambience, music, wild creatures by
 > element, two trainers and a Champion who gives one of 11 crests. Roads open crest by
 > crest; Travel Posts fast-travel between visited towns. Joy-Con controls with a thumbstick.
+> Town layouts are generated from a per-save seed (v0.0.04), with roads in any direction,
+> and wild levels rise from a town's entrance toward its exit.
 >
 > **Skills and levels:** creatures level to 100 and earn XP from knockouts (the
 > creature that lands it gets full XP, teammates get 20%; trainers give double). Each
