@@ -1,5 +1,12 @@
 # Crestville — Game Concept (v2)
 
+> **Current build (v0.2):** walk around Crestville, meet wild creatures in tall grass,
+> and fight lineup battles: each side stands in a line, the two front creatures hit each
+> other at the same time, and the next in line steps up when one faints. Win a wild battle
+> and the creature may join you (Sweet Berries raise the odds). Trainers on the route,
+> a boss who guards the first Crest, a Hatchery, a Market and an Arena with rival tamers
+> and friend team codes. Skilling, real-time combat and the rest below come later.
+
 **Pitch:** A cozy, long-term grind on your phone. Walk around Crestville and the wilds
 around it, gather and craft through slow-burn skills, raise companion creatures that
 follow you and evolve, and fight in real-time with big floating damage numbers. You're
@@ -61,7 +68,16 @@ Gathering and crafting skills that feed each other:
 - You bring 1 companion out at a time (more slots unlock later); the rest live in town
   and can be sent on gathering jobs.
 
-## Combat (real-time, side-scrolling MMO feel)
+## Creature battles (lineup auto-battles)
+- Your team of up to 5 stands in a line, in the order you choose.
+- The two front creatures hit each other at the same time. When one faints, the next
+  steps up. Last team standing wins.
+- Every creature has attack, HP and one ability (start of battle, when hurt, when it
+  faints, after attacking, when an ally faints). Lineup order is the main strategy.
+- Elements add a small bonus: Fire beats Leaf, Leaf beats Water, Water beats Fire.
+- Used for wild encounters, trainers, bosses, and battles against other players' teams.
+
+## Player combat (real-time, side-scrolling MMO feel, later)
 - Real-time fights in a side-on arena when you enter combat on the map.
 - **Three styles:** Melee, Ranged, Magic, chosen by your weapon. Magic is the
   "chill solo caster" option: ranged, with damage-over-time and a pet that tanks.

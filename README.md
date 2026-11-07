@@ -1,7 +1,7 @@
 # Crestville
 
-A cozy creature-collecting auto-battler for phones. Build a team of 5, watch them
-battle on their own, hatch eggs, earn crests, and test your team against other tamers.
+A cozy creature-collecting RPG for phones. Walk around town, meet wild creatures in
+tall grass, and win lineup auto-battles (front fights front) to make new friends.
 
 See [docs/DESIGN.md](docs/DESIGN.md) for the full game concept.
 
@@ -21,6 +21,9 @@ On a phone you can "Add to Home Screen" to play it like an app.
 - `index.html`, `css/style.css` – page and cozy styling
 - `js/data.js` – creatures, elements, roles, regions
 - `js/art.js` – hand-drawn style creature and egg art (SVG)
-- `js/battle.js` – auto-battle engine
+- `js/maps.js` – town, route and grove maps, NPCs and trainers
+- `js/world.js` – walkable overworld (canvas)
+- `js/battle.js` – lineup battle engine and creature abilities
 - `js/main.js` – game state, screens, saving
-- `tools/balance.js` – quick balance check (`node tools/balance.js`)
+- `tools/balance.js` – map checks and balance check (`node tools/balance.js`)
+- `tools/build_artifact.py` – rebuilds `play.html` for the shareable link

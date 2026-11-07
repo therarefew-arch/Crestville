@@ -63,3 +63,13 @@ const REGIONS = [
 const STARTERS = ['mossbun', 'puddlepup', 'emberkit'];
 
 const RIVAL_NAMES = ['Hazel', 'Juniper', 'Otis', 'Clementine', 'Basil', 'Poppy', 'Fennel', 'Marigold', 'Rufus', 'Willa', 'Pip', 'Tansy'];
+
+// Base [attack, HP] at level 1. Battles use small, readable numbers.
+const BASE_STATS = {
+  mossbun: [2, 5], thistlet: [3, 3], fernwhisk: [2, 3], puddlepup: [2, 4], driplet: [2, 3],
+  emberkit: [3, 3], cindermole: [2, 5], wickling: [3, 2], pebbleton: [2, 5], ripplefox: [3, 3],
+  shellby: [1, 5], duskmoth: [3, 3], hootlet: [2, 4], zappip: [4, 2], voltail: [3, 3],
+};
+
+// Stat gain per level, by role: [attack, HP]
+const GROWTH = { tank: [0.55, 1.5], striker: [0.95, 0.85], support: [0.65, 1.1], trickster: [0.85, 0.85] };

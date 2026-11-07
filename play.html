@@ -10,54 +10,49 @@
     <header class="topbar">
       <div class="brand">
         <svg viewBox="0 0 24 24" class="brand-crest" aria-hidden="true"><path d="M12 2 L20 5 V11 C20 16 16.5 20 12 22 C7.5 20 4 16 4 11 V5 Z" fill="#e88c7d" stroke="#5b4636" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 13 L11 9 L13 12 L14.5 10.5 L17 13" fill="none" stroke="#fffaf0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Crestville
+        <span id="map-name">Crestville</span>
       </div>
       <div class="pills">
         <span class="pill" title="Coins"><span class="coin"></span><b id="coins">0</b></span>
-        <span class="pill" title="Crests"><svg viewBox="0 0 24 24" class="mini-crest" aria-hidden="true"><path d="M12 2 L20 5 V11 C20 16 16.5 20 12 22 C7.5 20 4 16 4 11 V5 Z" fill="#f6d36b" stroke="#5b4636" stroke-width="2" stroke-linejoin="round"/></svg><b id="crests">0/5</b></span>
+        <span class="pill" title="Sweet Berries"><span class="berry"></span><b id="berries">0</b></span>
+        <span class="pill" title="Crests"><svg viewBox="0 0 24 24" class="mini-crest" aria-hidden="true"><path d="M12 2 L20 5 V11 C20 16 16.5 20 12 22 C7.5 20 4 16 4 11 V5 Z" fill="#f6d36b" stroke="#5b4636" stroke-width="2" stroke-linejoin="round"/></svg><b id="crests">0</b></span>
       </div>
     </header>
 
-    <main>
-      <section id="screen-adventure" class="screen active">
-        <div class="stage-head">
-          <div>
-            <div class="region-name" id="region-name"></div>
-            <div class="stage-label" id="stage-label"></div>
-          </div>
-          <div class="crest-row" id="crest-row"></div>
-        </div>
-        <div class="arena" id="arena">
-          <div class="scenery" id="scenery"></div>
-          <div class="banner" id="banner"></div>
-          <div class="side enemy-side">
-            <div class="row" id="enemy-back"></div>
-            <div class="row" id="enemy-front"></div>
-          </div>
-          <div class="side ally-side">
-            <div class="row" id="ally-front"></div>
-            <div class="row" id="ally-back"></div>
-          </div>
-        </div>
-        <div class="log" id="log" aria-live="polite"></div>
-        <div class="controls">
-          <button id="btn-play" class="btn primary">Start adventure</button>
-          <button id="btn-speed" class="btn">1×</button>
-          <button id="btn-push" class="btn small-text">Auto-advance<br><b>On</b></button>
-        </div>
-      </section>
+    <div class="world" id="world-wrap">
+      <canvas id="world"></canvas>
+      <div class="flash" id="flash"></div>
+      <div class="dialog hidden" id="dialog"><div class="who" id="dialog-who"></div><div id="dialog-text"></div><div class="more">▼</div></div>
+    </div>
 
-      <section id="screen-team" class="screen"></section>
-      <section id="screen-hatchery" class="screen"></section>
-      <section id="screen-arena" class="screen"></section>
-    </main>
+    <div class="padbar">
+      <div class="dpad" id="dpad">
+        <button data-dir="up" aria-label="Up"><svg viewBox="0 0 24 24"><path d="M6 15 L12 8 L18 15 Z"/></svg></button>
+        <button data-dir="left" aria-label="Left"><svg viewBox="0 0 24 24"><path d="M15 6 L8 12 L15 18 Z"/></svg></button>
+        <span class="dpad-mid"></span>
+        <button data-dir="right" aria-label="Right"><svg viewBox="0 0 24 24"><path d="M9 6 L16 12 L9 18 Z"/></svg></button>
+        <button data-dir="down" aria-label="Down"><svg viewBox="0 0 24 24"><path d="M6 9 L12 16 L18 9 Z"/></svg></button>
+      </div>
+      <div class="actions">
+        <button class="btn round-btn" id="btn-team"><span class="ico" data-icon="team"></span>Team</button>
+        <button class="a-btn" id="btn-a" aria-label="Talk or interact">A</button>
+      </div>
+    </div>
 
-    <nav class="tabs" id="tabs">
-      <button data-tab="adventure" class="active"><span class="ico" data-icon="adventure"></span>Adventure</button>
-      <button data-tab="team"><span class="ico" data-icon="team"></span>Team</button>
-      <button data-tab="hatchery"><span class="ico" data-icon="hatchery"></span>Hatchery</button>
-      <button data-tab="arena"><span class="ico" data-icon="arena"></span>Arena</button>
-    </nav>
+    <div class="battle hidden" id="battle">
+      <div class="b-head">
+        <div class="b-title" id="b-title"></div>
+        <button class="btn small" id="b-speed">1×</button>
+        <button class="btn small" id="b-skip">Skip</button>
+      </div>
+      <div class="lane" id="lane"><div class="vs" id="vs">VS</div></div>
+      <div class="b-foot" id="b-foot"></div>
+    </div>
+
+    <div class="panel hidden" id="panel">
+      <div class="panel-head"><h2 id="panel-title"></h2><button class="btn small" id="panel-close">Close</button></div>
+      <div class="panel-body" id="panel-body"></div>
+    </div>
 
     <div id="modal" class="modal hidden"><div class="sheet" id="sheet"></div></div>
     <div id="toasts"></div>
@@ -66,4 +61,6 @@
   <script src="js/data.js"></script>
   <script src="js/art.js"></script>
   <script src="js/battle.js"></script>
+  <script src="js/maps.js"></script>
+  <script src="js/world.js"></script>
   <script src="js/main.js"></script>
