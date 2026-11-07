@@ -9,6 +9,8 @@ function freshState() {
     name: '', coins: 60, berries: 2, crests: 0,
     roster: [], team: [null, null, null, null, null], nextUid: 1,
     eggCost: 100, trophies: 0, rivals: null, speed: 1, dust: 0, pity: 0, seen: [], visited: ['town'], lastTown: 'town', music: true, sfx: true, bike: false, riding: null, worldSeed: newSeed(), charms: [], nextCid: 1,
+    res: { ore: 0, fish: 0, herbs: 0, gems: 0 }, items: { stew: 0, feast: 0 }, jobs: [],
+    skills: { mining: { lvl: 1, xp: 0 }, fishing: { lvl: 1, xp: 0 }, foraging: { lvl: 1, xp: 0 }, cooking: { lvl: 1, xp: 0 }, smithing: { lvl: 1, xp: 0 } },
     map: 'town', x: MAPS.town.start[0], y: MAPS.town.start[1], dir: 'down', beaten: {},
   };
 }
@@ -33,6 +35,9 @@ function migrate(st) {
   if (!st.visited.includes('town')) st.visited.unshift('town');
   if (!st.worldSeed) st.worldSeed = newSeed();
   for (const c of st.roster) if (!c.charms) c.charms = [];
+  const fresh = freshState();
+  for (const k of ['res', 'items', 'skills']) st[k] = Object.assign(fresh[k], st[k] || {});
+  if (!Array.isArray(st.jobs)) st.jobs = [];
   st.team = st.team.map((u) => (st.roster.some((c) => c.uid === u) ? u : null));
   return st;
 }
@@ -537,7 +542,9 @@ function renderCharms(body) {
 }
 let teamTab = 'creatures';
 function teamTabs() {
-  return `<div class="tabs-row"><button class="${teamTab === 'creatures' ? 'on' : ''}" data-tab="creatures">Creatures</button><button class="${teamTab === 'charms' ? 'on' : ''}" data-tab="charms">Charms ${S.charms.length ? `<span class="count">${S.charms.length}</span>` : ''}</button></div>`;
+  const ready = S.jobs.some((j) => jobStored(j) > 0);
+  const tab = (k, label, badge = '') => `<button class="${teamTab === k ? 'on' : ''}" data-tab="${k}">${label}${badge}</button>`;
+  return `<div class="tabs-row">${tab('creatures', 'Team')}${tab('charms', 'Charms', S.charms.length ? `<span class="count">${S.charms.length}</span>` : '')}${tab('jobs', 'Jobs', ready ? '<span class="count">!</span>' : '')}${tab('workshop', 'Craft')}</div>`;
 }
 function bindTeamTabs(body) {
   body.querySelectorAll('.tabs-row [data-tab]').forEach((b) => (b.onclick = () => { teamTab = b.dataset.tab; refreshPanel(); body.scrollTop = 0; }));
@@ -1099,6 +1106,8 @@ function monCard(c) {
 let rosterSort = 'level';
 function renderTeam(body) {
   if (teamTab === 'charms') return renderCharms(body);
+  if (teamTab === 'jobs') return renderJobs(body);
+  if (teamTab === 'workshop') return renderWorkshop(body);
   const bonus = elementBonus(teamEntries().filter(Boolean));
   const bonusChips = Object.entries(bonus).map(([el, n]) => `<span class="chip"><span class="dot" style="background:${ELEMENTS[el].color}"></span>${ELEMENTS[el].name} team: +${n}/+${n}</span>`).join('');
   const sorters = { level: (a, b) => b.lvl - a.lvl, stars: (a, b) => stars(b.roll) - stars(a.roll) || b.traits.length - a.traits.length, kind: (a, b) => a.id.localeCompare(b.id) || b.lvl - a.lvl };
@@ -1172,6 +1181,10 @@ function showCreature(uid, confirmRelease = false) {
         <div class="charm-list">${c.charms.map((ch) => charmRow(ch, `<button class="btn small" data-off="${ch.cid}">Take off</button>`)).join('')}</div>
         ${c.charms.length < 2 ? '<button class="btn small block" data-act="charm" style="margin-top:6px">Equip a charm</button>' : ''}
       </div>
+      ${isWorking(uid) ? `<div class="stat wide">Working: ${(() => { const j = S.jobs.find((x) => x.uid === uid); return `${SKILLS_LIST[j.kind].name} in ${esc(MAPS[j.town].name)}`; })()}</div>` : ''}
+      ${S.items.stew || S.items.feast ? `<div class="stat wide">Food<div class="btn-row" style="margin-top:6px">
+        <button class="btn small" data-feed="stew" ${S.items.stew ? '' : 'disabled'}>Level Stew (${S.items.stew})</button>
+        <button class="btn small" data-feed="feast" ${S.items.feast ? '' : 'disabled'}>Golden Feast (${S.items.feast})</button></div></div>` : ''}
       <div class="stat wide">Hits ${beats} for extra damage.</div>
     </div>
     <div class="btn-row">
@@ -1196,6 +1209,7 @@ function showCreature(uid, confirmRelease = false) {
     } else {
       const empty = S.team.indexOf(null);
       if (empty < 0) { toast('Your team is full. Rest someone first.'); return; }
+      if (isWorking(uid)) stopJob(uid);
       S.team[empty] = uid;
     }
     save(); closeModal(); refreshPanel();
@@ -1210,6 +1224,7 @@ function showCreature(uid, confirmRelease = false) {
     if (levelUps.size || evoQueue.length || learnQueue.length) { closeModal(); celebrate().then(() => showCreature(uid)); } else showCreature(uid);
   });
   on('merge', () => { if (twins.length) pickMergeDonor(c, twins); });
+  sheet.querySelectorAll('[data-feed]').forEach((b) => (b.onclick = () => feedCreature(c, b.dataset.feed)));
   const cb = sheet.querySelector('[data-act=charm]');
   if (cb) cb.onclick = () => pickCharmFor(c);
   sheet.querySelectorAll('[data-off]').forEach((b) => (b.onclick = () => { unequipCharm(c, c.charms.find((x) => x.cid === Number(b.dataset.off))); showCreature(uid); refreshPanel(); }));
@@ -1236,6 +1251,7 @@ function showCreature(uid, confirmRelease = false) {
     if (inTeam && teamSize() <= 1) { toast('Add another creature to your team first.'); return; }
     if (!confirmRelease) { showCreature(uid, true); return; }
     if (S.riding === uid) setRiding(null);
+    if (isWorking(uid)) stopJob(uid);
     S.charms.push(...c.charms); c.charms = [];
     S.roster = S.roster.filter((x) => x.uid !== uid);
     if (inTeam) S.team[S.team.indexOf(uid)] = null;
@@ -1404,6 +1420,171 @@ function renderMarket(body) {
     S.coins -= cost; S.berries += n; save(); updateHud(); refreshPanel();
     toast(`Bought ${n} Sweet Berr${n > 1 ? 'ies' : 'y'}!`);
   }));
+}
+
+// ---------- jobs and skilling ----------
+const JOB_CAP_HOURS = 8;
+function skillNeed(l) { return Math.round(25 * Math.pow(l, 1.5)); }
+function addSkillXp(key, xp) {
+  const sk = S.skills[key];
+  if (sk.lvl >= 99) return;
+  sk.xp += xp;
+  let up = false;
+  while (sk.lvl < 99 && sk.xp >= skillNeed(sk.lvl)) { sk.xp -= skillNeed(sk.lvl); sk.lvl++; up = true; }
+  if (up) { sfx('ding'); toast(`${SKILLS_LIST[key].name} is now level <b>${sk.lvl}</b>!`); }
+}
+function jobSlots() {
+  const g = S.skills.mining.lvl + S.skills.fishing.lvl + S.skills.foraging.lvl;
+  return Math.min(6, 3 + Math.floor((g - 3) / 30));
+}
+function townTier(id) { return Math.max(0, TOWN_ORDER.indexOf(id)); }
+function jobRate(job, c) {
+  const sp = SPECIES_BY_ID[c.id];
+  const match = JOB_ELEMENTS[job.kind].includes(sp.el) ? 1.5 : 1;
+  return 6 * (1 + townTier(job.town) * 0.3) * (1 + c.lvl / 40) * match * (1 + (S.skills[job.kind].lvl - 1) * 0.02);
+}
+function jobStored(job) {
+  const c = byUid(job.uid);
+  if (!c) return 0;
+  const hours = Math.min(JOB_CAP_HOURS, (Date.now() - job.since) / 3.6e6);
+  return Math.floor(jobRate(job, c) * hours);
+}
+function collectJob(job) {
+  const c = byUid(job.uid), n = jobStored(job);
+  if (!c || n <= 0) return { n: 0, gems: 0 };
+  const make = SKILLS_LIST[job.kind].makes;
+  S.res[make] += n;
+  let gems = 0;
+  if (job.kind === 'mining') { const p = 0.04 + townTier(job.town) * 0.006; for (let i = 0; i < n; i++) if (Math.random() < p) gems++; S.res.gems += gems; }
+  addSkillXp(job.kind, n * 4);
+  addXp(c, n * 2);
+  job.since = Date.now();
+  return { n, gems, make };
+}
+function isWorking(uid) { return S.jobs.some((j) => j.uid === uid); }
+function stopJob(uid) { const j = S.jobs.find((x) => x.uid === uid); if (j) collectJob(j); S.jobs = S.jobs.filter((x) => x.uid !== uid); save(); }
+
+function resIcon(k, size = 22) {
+  const c = RESOURCES[k].color, ink = '#5b4636';
+  const shapes = {
+    ore: `<path d="M5 17 L8 8 L15 5 L20 11 L18 18 L10 20 Z" fill="${c}" stroke="${ink}" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 10 L13 9 M14 14 L16 13" stroke="#fffaf0" stroke-width="1.6" stroke-linecap="round"/>`,
+    fish: `<path d="M3 12 C7 6 14 6 18 12 C14 18 7 18 3 12 Z M18 12 L22 8 V16 Z" fill="${c}" stroke="${ink}" stroke-width="1.8" stroke-linejoin="round"/><circle cx="7.5" cy="11" r="1.2" fill="${ink}"/>`,
+    herbs: `<path d="M12 21 V10 M12 13 C6 13 4 8 5 4 C10 4 12 8 12 13 Z M12 11 C17 11 20 7 19 3 C14 3 12 7 12 11 Z" fill="${c}" stroke="${ink}" stroke-width="1.8" stroke-linejoin="round"/>`,
+    gems: `<path d="M6 4 H18 L22 9 L12 21 L2 9 Z" fill="${c}" stroke="${ink}" stroke-width="1.8" stroke-linejoin="round"/><path d="M2 9 H22 M8 4 L12 21 L16 4" fill="none" stroke="${ink}" stroke-width="1.2" opacity=".5"/>`,
+  };
+  return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true">${shapes[k]}</svg>`;
+}
+function resBar() {
+  return `<div class="res-bar">${Object.keys(RESOURCES).map((k) => `<span class="res">${resIcon(k)}<b data-res="${k}">${S.res[k].toLocaleString()}</b></span>`).join('')}</div>`;
+}
+
+function renderJobs(body) {
+  const slots = jobSlots();
+  const skillRows = ['mining', 'fishing', 'foraging', 'cooking', 'smithing'].map((k) => {
+    const sk = S.skills[k];
+    return `<div class="skill-row"><b>${SKILLS_LIST[k].name}</b><span class="sk-lv">Lv ${sk.lvl}</span><div class="xpbar"><i style="width:${sk.lvl >= 99 ? 100 : (100 * sk.xp) / skillNeed(sk.lvl)}%"></i></div></div>`;
+  }).join('');
+  const jobCards = S.jobs.map((j) => {
+    const c = byUid(j.uid);
+    if (!c) return '';
+    const stored = jobStored(j), rate = jobRate(j, c), cap = Math.floor(rate * JOB_CAP_HOURS);
+    const make = SKILLS_LIST[j.kind].makes;
+    return `<div class="job-card"><div class="mini">${art(c)}</div>
+      <div class="job-mid"><b>${esc(nameOf(c))}</b> <span class="hint">· ${SKILLS_LIST[j.kind].name} in ${esc(MAPS[j.town].name)}</span>
+        <div class="xpbar"><i style="width:${Math.min(100, (100 * stored) / Math.max(1, cap))}%"></i></div>
+        <small>${resIcon(make, 14)} ${stored} ready · ${rate.toFixed(1)}/hour · holds ${JOB_CAP_HOURS}h</small></div>
+      <div class="cr-btns"><button class="btn small primary" data-collect="${j.uid}" ${stored ? '' : 'disabled'}>Collect</button><button class="btn small" data-stop="${j.uid}">Stop</button></div></div>`;
+  }).join('');
+  const empty = Math.max(0, slots - S.jobs.length);
+  body.innerHTML = `${teamTabs()}
+    ${resBar()}
+    <p class="hint">Creatures resting at home can work in towns you've visited. They gather while you play and while you're away (up to ${JOB_CAP_HOURS} hours), and slowly gain XP.</p>
+    <div class="row-head"><h3>Helpers (${S.jobs.length}/${slots})</h3>${S.jobs.some((j) => jobStored(j)) ? '<button class="btn small primary" id="collect-all">Collect all</button>' : ''}</div>
+    <div class="job-list">${jobCards}${Array.from({ length: empty }, () => '<button class="job-card empty" data-new>+ Start a job</button>').join('')}</div>
+    <h3>Skills</h3><div class="card skills-card">${skillRows}<p class="hint" style="font-size:12px;margin-top:6px">Gathering skills raise yields. Higher total gathering levels unlock more helper slots.</p></div>`;
+  bindTeamTabs(body);
+  const doCollect = (jobs) => {
+    const got = { ore: 0, fish: 0, herbs: 0, gems: 0 };
+    const before = { ...S.res };
+    for (const j of jobs) { const r = collectJob(j); if (r.n) { got[r.make] += r.n; got.gems += r.gems; } }
+    save();
+    if (!Object.values(got).some(Boolean)) return;
+    sfx('coin');
+    refreshPanel();
+    const bar = $('#panel-body');
+    for (const k of Object.keys(got)) if (got[k]) { const el = bar.querySelector(`[data-res="${k}"]`); if (el) { countUp(el, before[k], S.res[k], 800); restartClass(el.parentElement, 'pill-bump', 500); } }
+    toast(`Collected ${Object.entries(got).filter(([, v]) => v).map(([k, v]) => `${v} ${RESOURCES[k].name.toLowerCase()}`).join(', ')}!`);
+    setTimeout(celebrate, 900);
+  };
+  body.querySelectorAll('[data-collect]').forEach((b) => (b.onclick = () => doCollect(S.jobs.filter((j) => j.uid === Number(b.dataset.collect)))));
+  const all = $('#collect-all'); if (all) all.onclick = () => doCollect(S.jobs);
+  body.querySelectorAll('[data-stop]').forEach((b) => (b.onclick = () => { stopJob(Number(b.dataset.stop)); refreshPanel(); }));
+  body.querySelectorAll('[data-new]').forEach((b) => (b.onclick = pickJob));
+}
+
+function pickJob() {
+  const offers = TOWN_ORDER.filter((id) => S.visited.includes(id)).flatMap((id) => (TOWN_JOBS[id] || []).map((kind) => ({ id, kind })));
+  const sheet = openModal(`<h2>Pick a job</h2><p class="hint">Later towns pay more. Matching elements work 50% faster.</p>
+    <div class="choice-list">${offers.map((o, i) => `<button class="btn block choice" data-o="${i}"><b>${resIcon(SKILLS_LIST[o.kind].makes, 16)} ${SKILLS_LIST[o.kind].name} in ${esc(MAPS[o.id].name)}</b><small>Good for ${JOB_ELEMENTS[o.kind].map((e) => ELEMENTS[e].name).join(', ')} creatures${o.kind === 'mining' ? ' · sometimes finds gems' : ''}</small></button>`).join('')}</div>
+    <button class="btn block" data-act="back" style="margin-top:10px">Back</button>`);
+  sheet.querySelector('[data-act=back]').onclick = closeModal;
+  sheet.querySelectorAll('[data-o]').forEach((b) => (b.onclick = () => pickWorker(offers[Number(b.dataset.o)])));
+}
+function pickWorker(offer) {
+  const free = S.roster.filter((c) => !S.team.includes(c.uid) && !isWorking(c.uid))
+    .sort((a, b) => (JOB_ELEMENTS[offer.kind].includes(SPECIES_BY_ID[b.id].el) - JOB_ELEMENTS[offer.kind].includes(SPECIES_BY_ID[a.id].el)) || b.lvl - a.lvl);
+  const sheet = openModal(`<h2>Who works ${SKILLS_LIST[offer.kind].name.toLowerCase()} in ${esc(MAPS[offer.id].name)}?</h2>
+    ${free.length ? `<div class="grid" style="margin-top:8px">${free.map((c) => monCard(c).replace('</div></div>', `</div><div class="lv">${jobRate({ ...offer, town: offer.id }, c).toFixed(1)}/hour</div></div>`)).join('')}</div>`
+      : '<p class="hint">Everyone is busy. Only creatures resting at home (not on your team) can work. Befriend or hatch more creatures!</p>'}
+    <button class="btn block" data-act="back" style="margin-top:10px">Back</button>`);
+  sheet.querySelector('[data-act=back]').onclick = pickJob;
+  sheet.querySelectorAll('.mon').forEach((el) => (el.onclick = () => {
+    S.jobs.push({ uid: Number(el.dataset.uid), town: offer.id, kind: offer.kind, since: Date.now() });
+    save(); closeModal(); sfx('pop', 6); refreshPanel();
+    toast(`${esc(nameOf(byUid(Number(el.dataset.uid))))} started ${SKILLS_LIST[offer.kind].name.toLowerCase()}!`);
+  }));
+}
+
+function renderWorkshop(body) {
+  const can = (r) => S.skills[r.skill].lvl >= r.lvl && Object.entries(r.cost).every(([k, v]) => S.res[k] >= v);
+  body.innerHTML = `${teamTabs()}
+    ${resBar()}
+    <p class="hint">Turn what your helpers gather into useful things. Crafting raises Cooking and Smithing.</p>
+    <div class="recipe-list">${RECIPES.map((r) => {
+      const locked = S.skills[r.skill].lvl < r.lvl;
+      return `<div class="recipe ${locked ? 'locked' : ''}">
+        <div class="rc-mid"><b>${r.name}</b><small>${r.desc}</small>
+          <div class="rc-cost">${Object.entries(r.cost).map(([k, v]) => `<span class="${S.res[k] >= v ? '' : 'short'}">${resIcon(k, 14)} ${v}</span>`).join('')}
+          <span class="hint">· ${SKILLS_LIST[r.skill].name} ${locked ? `Lv ${r.lvl} needed` : `+${r.xp} XP`}</span></div></div>
+        <button class="btn small primary" data-craft="${r.id}" ${can(r) ? '' : 'disabled'}>Make</button></div>`;
+    }).join('')}</div>
+    ${S.items.stew || S.items.feast ? `<p class="hint" style="margin-top:10px">In your bag: ${S.items.stew} Level Stew, ${S.items.feast} Golden Feast. Feed them from a creature's page.</p>` : ''}`;
+  bindTeamTabs(body);
+  body.querySelectorAll('[data-craft]').forEach((b) => (b.onclick = () => craft(RECIPES.find((r) => r.id === b.dataset.craft))));
+}
+function craft(r) {
+  for (const [k, v] of Object.entries(r.cost)) S.res[k] -= v;
+  addSkillXp(r.skill, r.xp);
+  if (r.id === 'berries') { S.berries += 3; updateHud(); toast('Made 3 Sweet Berries!'); }
+  if (r.id === 'stew') { S.items.stew++; toast('Made a Level Stew! Feed it from a creature\'s page.'); }
+  if (r.id === 'feast') { S.items.feast++; toast('Made a Golden Feast! Feed it from a creature\'s page.'); }
+  if (r.id === 'dust') { S.dust += 40; toast('Made 40 stardust!'); }
+  if (r.id === 'charm') {
+    const sm = S.skills.smithing.lvl;
+    const w = { common: Math.max(20, 70 - sm), rare: 25 + sm * 0.3, epic: 5 + sm * 0.4, legendary: Math.max(0, (sm - 30) * 0.25) };
+    const ch = makeCharm(teamPower(), weightedPick(Object.keys(w), (k) => w[k]));
+    S.charms.push(ch); lootQueue.push(ch);
+  }
+  sfx('pop', 8);
+  save(); refreshPanel();
+  if (lootQueue.length) celebrate();
+}
+function feedCreature(c, kind) {
+  if (!S.items[kind]) return;
+  S.items[kind]--;
+  setLevel(c, c.lvl + (kind === 'feast' ? 3 : 1));
+  save(); closeModal(); refreshPanel();
+  celebrate().then(() => showCreature(c.uid));
 }
 
 // ---------- mounts ----------
@@ -1702,6 +1883,7 @@ function init() {
   if (okSpot(map, S.x, S.y)) enterMap(map, S.x, S.y, S.dir);
   else enterMap(map, MAPS[map].start[0], MAPS[map].start[1], 'down');
   applyMount();
+  if (S.jobs.some((j) => jobStored(j) > 0)) setTimeout(() => toast('Your helpers gathered things while you were away! Collect them in <b>Team → Jobs</b>.'), 1200);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => worldBake());
   updateHud();
   inputTick();

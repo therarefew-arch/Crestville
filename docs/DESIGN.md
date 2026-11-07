@@ -146,7 +146,9 @@ The current build (an auto-battler team game) is a prototype. Its creatures, art
 battle numbers and eggs carry over into the new version.
 
 ## Roadmap (agreed ideas, roughly in order)
-0. **Bicycles and mounts:** faster travel between and within towns (walking is kept gentle).
+Done in v0.0.08–v0.0.10: bicycles and creature mounts, boss loot and charms, town jobs with
+skilling and crafting.
+
 1. **Expeditions:** 3-5 minute runs through a region (choose a path of grass, trainers,
    treasure and rest stops) ending in a boss with loot.
 2. **Boss charms:** equippable charms with random bonus stats, dropped by bosses. Later the

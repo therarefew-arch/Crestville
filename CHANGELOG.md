@@ -2,6 +2,17 @@
 
 The version shows at the bottom of the game screen. Each update adds 1.
 
+## v0.0.10
+- Town jobs: creatures resting at home (not on your team) can mine, fish or forage in towns
+  you've visited. Later towns pay more, and matching elements work 50% faster. Helpers keep
+  gathering while you're away, up to 8 hours, and slowly gain XP.
+- Resources: ore, fish, herbs and rare gems (found while mining).
+- Five skills that level to 99: Mining, Fishing, Foraging, Cooking and Smithing. Gathering
+  skills raise yields and unlock more helper slots (3 up to 6).
+- Workshop (Team → Craft): Sweet Berries, Level Stew (+1 level), Golden Feast (+3 levels),
+  Forged Charms (better odds with higher Smithing) and Stardust.
+- Team panel now has tabs: Team, Charms, Jobs and Craft.
+
 ## v0.0.09
 - Charms: loot with random bonus stats, in Common, Rare, Epic and Legendary. 11 possible
   stats: attack, HP, % attack, % HP, a stronger first hit, bonus attack while first in line,

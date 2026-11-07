@@ -1,7 +1,7 @@
 // Game data: elements, roles, creatures, traits and regions.
 
 // Bump by one with every update (v0.0.02, v0.0.03, ...). Also add a line to CHANGELOG.md.
-const VERSION = 'v0.0.09';
+const VERSION = 'v0.0.10';
 
 const ELEMENTS = {
   leaf:  { name: 'Leaf',  color: '#a8cf8e', dark: '#5e8a4a', beats: ['water', 'stone'] },
@@ -161,3 +161,33 @@ const CHARM_ADJ = {
   common: ['Little', 'Cozy', 'Plain', 'Pocket'], rare: ['Bright', 'Lucky', 'Polished', 'Humming'],
   epic: ['Radiant', 'Ancient', 'Starlit', 'Whispering'], legendary: ['Mythic', 'Celestial', 'Eternal', 'Crowned'],
 };
+
+// ---------- Jobs and skilling ----------
+const RESOURCES = {
+  ore:   { name: 'Ore',   color: '#a9a4a0' },
+  fish:  { name: 'Fish',  color: '#8fc4d6' },
+  herbs: { name: 'Herbs', color: '#9cc485' },
+  gems:  { name: 'Gems',  color: '#c79be0' },
+};
+const SKILLS_LIST = {
+  mining:   { name: 'Mining',   makes: 'ore' },
+  fishing:  { name: 'Fishing',  makes: 'fish' },
+  foraging: { name: 'Foraging', makes: 'herbs' },
+  cooking:  { name: 'Cooking' },
+  smithing: { name: 'Smithing' },
+};
+// Jobs on offer in each town (town ids from maps/towns).
+const TOWN_JOBS = {
+  town: ['foraging'], willowmere: ['fishing', 'foraging'], sunpetal: ['foraging'], emberforge: ['mining'],
+  saltbreeze: ['fishing', 'mining'], duskmire: ['foraging', 'fishing'], lanternhollow: ['foraging', 'mining'],
+  sandglass: ['mining'], cogsworth: ['mining'], frostpeak: ['mining', 'fishing'], starfall: ['mining', 'fishing', 'foraging'],
+};
+// Elements that are good at each job.
+const JOB_ELEMENTS = { mining: ['stone', 'fire', 'gear'], fishing: ['water'], foraging: ['leaf', 'shade', 'spark'] };
+const RECIPES = [
+  { id: 'berries', name: 'Sweet Berries ×3', skill: 'cooking', lvl: 1, cost: { herbs: 4 }, xp: 15, desc: 'Three berries for befriending wild creatures.' },
+  { id: 'stew', name: 'Level Stew', skill: 'cooking', lvl: 5, cost: { fish: 3, herbs: 2 }, xp: 30, desc: 'Feed it to a creature: +1 level.' },
+  { id: 'feast', name: 'Golden Feast', skill: 'cooking', lvl: 20, cost: { fish: 6, herbs: 6, gems: 1 }, xp: 90, desc: 'Feed it to a creature: +3 levels.' },
+  { id: 'charm', name: 'Forged Charm', skill: 'smithing', lvl: 1, cost: { ore: 25, gems: 2 }, xp: 40, desc: 'A random charm at your team\'s level. Better odds as Smithing grows.' },
+  { id: 'dust', name: 'Stardust ×40', skill: 'smithing', lvl: 8, cost: { gems: 2 }, xp: 25, desc: 'Grind gems into stardust for rerolls.' },
+];
