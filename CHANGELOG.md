@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.0.08
+- **Lighting up, done properly.** Vane takes his time now:
+  - The cigarette goes to his lips and his chin comes down.
+  - Both hands come up and cup around a brass lighter right at the tip. The arms are solved so the hands really
+    meet there.
+  - The lid flips back. The first strike only throws a spark. The second catches, and the flame lights his face
+    warm from below.
+  - He draws, the flame bends up into the tip, and the paper catches.
+  - The lid snaps shut, the hands come down, and his head comes up to let the first smoke out, up and away.
+  - It works standing in the street, at the wheel of the car and in the cockpit.
+- The ember's glow is softer, so it lights his face without washing his shirt pink.
+- New dev switch: `-hn-lightup` films the light-up close from three angles.
+
 ## v0.0.07
 - **The finishing move is a visor beam now.** When the crab is staggered and you press F, the Graven plants its
   feet and throws its arms back. The visor heats from amber to white, and it burns a beam straight through the

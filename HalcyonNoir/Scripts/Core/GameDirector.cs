@@ -7,7 +7,7 @@ namespace HalcyonNoir
 {
     public static class Game
     {
-        public const string Version = "v0.0.07";
+        public const string Version = "v0.0.08";
         public static bool Paused;
     }
 
@@ -34,7 +34,7 @@ namespace HalcyonNoir
             go.AddComponent<GameDirector>();
             if (DevArgs.ShotDir != null) go.AddComponent<DevShots>();
             // smoke tests run unattended: keep going when the window loses focus (normal play still pauses)
-            if (DevArgs.ShotDir != null || DevArgs.Auto || DevArgs.SkipToFight) Application.runInBackground = true;
+            if (DevArgs.ShotDir != null || DevArgs.Auto || DevArgs.SkipToFight || DevArgs.LightUp) Application.runInBackground = true;
         }
     }
 
@@ -51,7 +51,8 @@ namespace HalcyonNoir
         public static bool SkipToFight => Index("-hn-fight") >= 0;
         public static bool Auto => Index("-hn-auto") >= 0;
         public static bool CallIn => Index("-hn-callin") >= 0;
-        public static bool Finish => Index("-hn-finish") >= 0;   // with -hn-fight: break the crab after a few seconds and play the finisher
+        public static bool Finish => Index("-hn-finish") >= 0;
+        public static bool LightUp => Index("-hn-lightup") >= 0;   // film the light-up close from three angles   // with -hn-fight: break the crab after a few seconds and play the finisher
         public static string WavDir => Value("-hn-wav");   // dump the synthesized music and rain as .wav files   // jump straight to calling the Graven (auto-advances)
         public static string ShotDir => Value("-hn-shots");
         public static float ShotEvery => float.TryParse(Value("-hn-shot-every"), System.Globalization.NumberStyles.Float,
@@ -415,6 +416,30 @@ namespace HalcyonNoir
             {
                 outcome = 2; ui.Sharp = true;
                 yield return StartFight();
+                yield break;
+            }
+            if (DevArgs.LightUp)
+            {
+                // film Vane lighting up, close, from three angles
+                var at = new Vector3(-30, 0, -3);
+                player.Cc.enabled = false; player.transform.position = at; player.transform.rotation = Quaternion.LookRotation(Vector3.forward); player.Cc.enabled = true;
+                player.Scripted = true;
+                ui.Letterbox = 1;
+                StartCoroutine(Fade(0, 0.5f));
+                var fig = player.Figure;
+                var angles = new[] { new Vector3(0.6f, -0.08f, 0.85f), new Vector3(1.0f, -0.05f, 0.15f), new Vector3(-0.9f, -0.05f, 0.4f) };
+                foreach (var off in angles)
+                {
+                    var head = fig.Head.position;
+                    Shot(head + fig.transform.TransformDirection(off), head + Vector3.down * 0.06f);
+                    cam.transform.position = orbit.CinePos; cam.transform.LookAt(orbit.CineLook);
+                    yield return Wait(0.6f);
+                    yield return smoke.LightUpCo();
+                    yield return Wait(0.6f);
+                    smoke.PutOut();
+                    yield return Wait(0.5f);
+                }
+                Application.Quit();
                 yield break;
             }
             if (DevArgs.CallIn)

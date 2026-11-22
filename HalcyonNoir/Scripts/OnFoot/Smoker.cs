@@ -15,6 +15,9 @@ namespace HalcyonNoir
         Material emberMat;
         Light emberLight, flameLight;
         GameObject flame;
+        Transform lid, fire, fireCore;
+        float cupK, cupTarget, lidOpen, fireOn, fireLean;   // light-up state, driven by LightUpCo and applied in LateUpdate
+        bool lighterOut;
 
         public bool Lit { get; private set; }
         public bool Busy { get; private set; }
@@ -48,11 +51,18 @@ namespace HalcyonNoir
             emberLight = Build.PointLight(cig, new Vector3(0, 0, 0.09f), new Color(1f, 0.45f, 0.15f), 1.4f, 0);
             cig.gameObject.SetActive(false);
 
+            // a brass lighter with a lid that flips back
             flame = new GameObject("Lighter");
             flame.transform.SetParent(transform, false);
-            Build.Part(flame.transform, PrimitiveType.Cube, new Vector3(0, -0.03f, 0), new Vector3(0.035f, 0.05f, 0.018f), Mats.Toon(new Color(0.7f, 0.7f, 0.72f)));
-            Build.Part(flame.transform, PrimitiveType.Sphere, new Vector3(0, 0.018f, 0), new Vector3(0.014f, 0.032f, 0.014f), Mats.Glow(new Color(1f, 0.75f, 0.35f), 4f));
-            flameLight = Build.PointLight(flame.transform, new Vector3(0, 0.03f, 0.02f), new Color(1f, 0.7f, 0.35f), 2.6f, 0);
+            var brass = Mats.Toon(new Color(0.72f, 0.58f, 0.32f), null, 0.02f);
+            Build.Part(flame.transform, PrimitiveType.Cube, new Vector3(0, -0.028f, 0), new Vector3(0.034f, 0.05f, 0.016f), brass);
+            Build.Part(flame.transform, PrimitiveType.Cube, new Vector3(0, -0.001f, 0), new Vector3(0.022f, 0.008f, 0.012f), Mats.Toon(new Color(0.5f, 0.5f, 0.52f)));   // chimney
+            lid = Build.Pivot(flame.transform, "Lid", new Vector3(0, 0.002f, -0.008f));
+            Build.Part(lid, PrimitiveType.Cube, new Vector3(0, 0.008f, 0.008f), new Vector3(0.034f, 0.016f, 0.016f), brass);
+            fire = Build.Part(flame.transform, PrimitiveType.Sphere, new Vector3(0, 0.02f, 0), new Vector3(0.016f, 0.04f, 0.016f), Mats.Glow(new Color(1f, 0.72f, 0.3f), 5f)).transform;
+            fireCore = Build.Part(fire, PrimitiveType.Sphere, new Vector3(0, -0.15f, 0), new Vector3(0.55f, 0.5f, 0.55f), Mats.Glow(new Color(0.55f, 0.7f, 1f), 3f)).transform;  // blue at the root
+            fire.gameObject.SetActive(false);
+            flameLight = Build.PointLight(flame.transform, new Vector3(0, 0.03f, 0.06f), new Color(1f, 0.66f, 0.3f), 1.6f, 0);
             flame.SetActive(false);
         }
 
@@ -66,10 +76,12 @@ namespace HalcyonNoir
         public void LightUp() { if (!Busy && !Lit) StartCoroutine(LightUpCo()); }
         public void Drag() { if (!Busy) StartCoroutine(Lit ? DragCo() : LightUpCo()); }
         public void Flick() { if (!Busy && Lit) StartCoroutine(FlickCo()); }
-        public void PutOut() { StopAllCoroutines(); Busy = false; Lit = false; cig.gameObject.SetActive(false); flame.SetActive(false); ReleaseArms(); }
+        public void PutOut() { StopAllCoroutines(); Busy = false; Lit = false; cig.gameObject.SetActive(false); flame.SetActive(false); lighterOut = false; cupTarget = cupK = 0; f.HeadPose = null; if (f.ArmLPose == CupArmL) { f.ArmLPose = null; f.ForeLBend = -1; } ReleaseArms(); }
 
-        // Strike the lighter and light up: the cigarette goes to the lips, both hands cup the flame,
-        // the tip catches, a first drag, and the smoke comes out slow.
+        // Lighting up, taken slow: the cigarette goes to the lips and the chin comes down, both hands come up
+        // and cup around the lighter, the lid flips back, the first strike only throws sparks, the second
+        // one catches and lights his face from below. He draws until the tip takes, the lid snaps shut, the
+        // hands come down, and the head comes up to let the first smoke out.
         public IEnumerator LightUpCo()
         {
             if (Lit) { yield return DragCo(); yield break; }
@@ -77,35 +89,100 @@ namespace HalcyonNoir
             Burn = 0;
             cig.gameObject.SetActive(true);
             emberMat.SetFloat("_Intensity", 0);
-            bool armsFree = !f.Seated || f.ArmLPose == null;
             bool wasInMouth = InMouth;
+            var heldL = f.ArmLPose; float heldLBend = f.ForeLBend;
             InMouth = true;
+
+            // the cigarette to the lips
             f.ArmRPose = DragArm; f.ForeRBend = 100;
-            yield return Wait(0.35f);
-            f.ArmLPose = CupArmL; f.ForeLBend = 100;
-            yield return Wait(0.3f);
-            flame.SetActive(true);
+            yield return Wait(0.4f);
+
+            // head down, hands up and cupped
+            f.HeadPose = new Vector3(18, -6, 5);
+            f.ArmLPose = CupArmL; f.ForeLBend = 110;
+            f.ArmRPose = new Vector3(-72, -30, -34); f.ForeRBend = 110;
+            lighterOut = true; flame.SetActive(true); fire.gameObject.SetActive(false); fireOn = 0; lidOpen = 0;
+            cupTarget = 1;
+            yield return Wait(0.45f);
+
+            // the lid flips back
+            Sound.I?.Play("lighter", 0.22f, 1.7f);
+            for (float t = 0; t < 0.12f; t += Time.deltaTime) { lidOpen = t / 0.12f; yield return null; }
+            lidOpen = 1;
+            yield return Wait(0.2f);
+
+            // first strike: sparks, nothing else
+            Sound.I?.Play("lighter", 0.3f, 1.25f);
+            fire.gameObject.SetActive(true); fireOn = 0.35f;     // a spark, no more
+            yield return Wait(0.06f);
+            fire.gameObject.SetActive(false); fireOn = 0;
+            yield return Wait(0.45f);
+
+            // second strike catches
             Sound.I?.Play("lighter", 0.55f, Random.Range(0.95f, 1.05f));
-            for (float t = 0; t < 0.9f; t += Time.deltaTime)
+            fire.gameObject.SetActive(true);
+            for (float t = 0; t < 1.5f; t += Time.deltaTime)
             {
-                flame.transform.position = Mouth + Forward * 0.1f + Vector3.down * 0.035f;
-                flame.transform.rotation = Quaternion.LookRotation(Forward);
-                flameLight.intensity = 1.6f + Mathf.PerlinNoise(t * 20, 0) * 1.4f;
-                glow = Mathf.Clamp01((t - 0.35f) / 0.4f);
+                fireOn = Mathf.Clamp01(t / 0.08f);
+                // he draws: the flame bends up into the tip and the paper catches
+                fireLean = Mathf.Clamp01((t - 0.35f) / 0.3f) * (0.7f + 0.3f * Mathf.Sin(t * 9f));
+                glow = Mathf.Clamp01((t - 0.55f) / 0.5f);
+                if (t > 0.8f && !Lit) { Lit = true; Fx.I?.Smoke(Tip, Vector3.up * 0.1f, 2, 0.4f); }
                 yield return null;
             }
-            flame.SetActive(false);
             Lit = true;
-            f.ArmLPose = null; f.ForeLBend = -1;
-            yield return Wait(0.55f);
+
+            // the lid snaps shut on the flame
+            fire.gameObject.SetActive(false); fireOn = 0; fireLean = 0;
+            Sound.I?.Play("lighter", 0.35f, 0.75f);
+            for (float t = 0; t < 0.08f; t += Time.deltaTime) { lidOpen = 1 - t / 0.08f; yield return null; }
+            lidOpen = 0;
+            yield return Wait(0.25f);
+
+            // hands down, head up, and the first smoke goes up and away
+            cupTarget = 0;
             glow = 0;
+            f.ArmLPose = heldL; f.ForeLBend = heldLBend;
             InMouth = wasInMouth;
             if (!InMouth) { f.ArmRPose = new Vector3(-30, -10, -12); f.ForeRBend = 70; }
-            yield return Wait(0.5f);
-            Exhale(1.3f);
-            yield return Wait(0.4f);
-            ReleaseArms();
+            else { f.ArmRPose = null; f.ForeRBend = -1; }
+            f.HeadPose = new Vector3(-12, 14, -3);
+            yield return Wait(0.3f);
+            lighterOut = false; flame.SetActive(false);
+            Exhale(1.5f, 0.55f);
+            yield return Wait(1.1f);
+            f.HeadPose = null;
+            yield return Wait(0.2f);
+            if (!InMouth) ReleaseArms();
             Busy = false;
+        }
+
+        // Where the flame sits: just under the tip of the cigarette, in the hands.
+        Vector3 FlamePoint => TipAtLips - Vector3.up * 0.042f;
+        Vector3 TipAtLips => Mouth + LipsRot * new Vector3(0, 0, 0.082f);
+        Quaternion LipsRot => Quaternion.LookRotation(Forward + Vector3.down * (InMouth ? 0.45f : 0.2f) + f.Head.right * 0.15f);
+
+        // Two-bone reach: turn the upper arm and forearm so the glove lands on the target, elbow toward the pole.
+        static readonly Vector3 GloveLocal = new Vector3(0, -0.37f, 0.01f);
+        void Reach(Transform arm, Transform fore, Vector3 target, Vector3 pole, float w)
+        {
+            if (w <= 0.001f) return;
+            var S = arm.position;
+            float a = Vector3.Distance(fore.position, S);
+            float b = Vector3.Distance(fore.TransformPoint(GloveLocal), fore.position);
+            var d = target - S;
+            float dist = Mathf.Clamp(d.magnitude, Mathf.Abs(a - b) + 0.01f, a + b - 0.005f);
+            var dir = d.normalized;
+            float cosA = Mathf.Clamp((a * a + dist * dist - b * b) / (2 * a * dist), -1, 1);
+            var bendDir = Vector3.ProjectOnPlane(pole, dir).normalized;
+            var E = S + dir * (a * cosA) + bendDir * (a * Mathf.Sqrt(1 - cosA * cosA));
+            var T = S + dir * dist;
+            var upperDown = (E - S).normalized;
+            var armRot = Quaternion.LookRotation(Vector3.ProjectOnPlane(T - E, upperDown).normalized, -upperDown);
+            var foreDown = (T - E).normalized;
+            var foreRot = Quaternion.LookRotation(Vector3.ProjectOnPlane(f.Body.forward + Vector3.up * 0.4f, foreDown).normalized, -foreDown);
+            arm.rotation = Quaternion.Slerp(arm.rotation, armRot, w);
+            fore.rotation = Quaternion.Slerp(fore.rotation, foreRot, w);
         }
 
         // A slow drag: the hand comes up, the ember flares, the hand drops, and the smoke comes out.
@@ -161,19 +238,19 @@ namespace HalcyonNoir
             Destroy(b.gameObject);
         }
 
-        public void Exhale(float amount)
+        public void Exhale(float amount, float lift = 0)
         {
             Sound.I?.Play("exhale", 0.3f * amount, Random.Range(0.9f, 1.05f));
-            StartCoroutine(ExhaleCo(amount));
+            StartCoroutine(ExhaleCo(amount, lift));
         }
 
-        IEnumerator ExhaleCo(float amount)
+        IEnumerator ExhaleCo(float amount, float lift)
         {
             float dur = 1.1f * amount;
             for (float t = 0; t < dur; t += Time.deltaTime)
             {
                 float k = Mathf.Sin(Mathf.PI * t / dur);
-                var dir = (Forward + Vector3.down * 0.25f).normalized;
+                var dir = (Forward + Vector3.down * 0.25f + Vector3.up * lift).normalized;
                 if (Random.value < 0.8f) Fx.I?.Smoke(Mouth + Forward * 0.04f, dir * (0.55f + 0.3f * k) + Vector3.up * 0.05f, Mathf.CeilToInt(2 * Thickness * k), 0.8f + 0.5f * Thickness);
                 yield return null;
             }
@@ -191,12 +268,42 @@ namespace HalcyonNoir
         {
             if (f == null || !cig.gameObject.activeSelf) return;
             float dt = Time.deltaTime;
+
+            // both hands cupped around the lighter at the tip
+            cupK = Mathf.MoveTowards(cupK, cupTarget, dt * (cupTarget > cupK ? 2.8f : 2.2f));
+            if (f.ForeR != null && f.ForeL != null && cupK > 0.001f)
+            {
+                float w = Mathf.SmoothStep(0, 1, cupK);
+                var F = FlamePoint;
+                var r = f.Head.right; var fw = Vector3.ProjectOnPlane(Forward, Vector3.up).normalized;
+                Reach(f.ArmR, f.ForeR, F + r * 0.03f - Vector3.up * 0.05f - fw * 0.01f, r * 0.9f + Vector3.down - fw * 0.3f, w);
+                Reach(f.ArmL, f.ForeL, F - r * 0.045f + fw * 0.035f - Vector3.up * 0.005f, -r * 0.9f + Vector3.down - fw * 0.3f, w);
+            }
+            if (lighterOut)
+            {
+                var fw = Vector3.ProjectOnPlane(Forward, Vector3.up).normalized;
+                flame.transform.position = FlamePoint;
+                flame.transform.rotation = Quaternion.LookRotation(fw);
+                lid.localRotation = Quaternion.Euler(-115 * lidOpen, 0, 0);
+                if (fireOn > 0)
+                {
+                    float n = Mathf.PerlinNoise(Time.time * 18f, 0.3f);
+                    fire.localScale = new Vector3(0.016f, 0.034f + 0.014f * n + 0.012f * fireLean, 0.016f) * fireOn;
+                    // drawing pulls the flame up and in toward the tip
+                    fire.localPosition = new Vector3(0, 0.02f + 0.006f * fireLean, 0.004f * fireLean);
+                    fire.localRotation = Quaternion.Euler(-12 * fireLean + (n - 0.5f) * 10f, 0, (Mathf.PerlinNoise(0.7f, Time.time * 11f) - 0.5f) * 14f);
+                    flameLight.intensity = (0.55f + n * 0.35f + fireLean * 0.2f) * fireOn;
+                    flameLight.range = 0.75f;
+                }
+                else flameLight.intensity = Mathf.MoveTowards(flameLight.intensity, 0, dt * 30f);
+            }
+
             bool atLips = InMouth || f.ArmRPose == DragArm;
             mouthK = Mathf.MoveTowards(mouthK, atLips ? 1 : 0, dt * (atLips ? 3.2f : 4f));
             var hand = Hand;
             var holdPos = hand.TransformPoint(HandLocal);
             var holdRot = Quaternion.LookRotation(Vector3.Lerp(transform.forward, -hand.up, 0.35f) + Vector3.down * 0.2f);
-            var lipsRot = Quaternion.LookRotation(Forward + Vector3.down * (InMouth ? 0.45f : 0.2f) + f.Head.right * 0.15f);
+            var lipsRot = LipsRot;
             float k = Mathf.SmoothStep(0, 1, mouthK);
             cig.position = Vector3.Lerp(holdPos, Mouth, k);
             cig.rotation = Quaternion.Slerp(holdRot, lipsRot, k);
@@ -206,8 +313,8 @@ namespace HalcyonNoir
                 Burn += dt / BurnTime * (1 + glow * 3);
                 float flicker = Mathf.PerlinNoise(Time.time * 3f, transform.position.x) * 0.5f;
                 emberMat.SetFloat("_Intensity", 1.2f + flicker + glow * 5f);
-                emberLight.intensity = 0.25f + flicker * 0.3f + glow * 2.2f;
-                emberLight.range = 1.2f + glow * 1.2f;
+                emberLight.intensity = 0.12f + flicker * 0.12f + glow * 0.55f;
+                emberLight.range = 0.6f + glow * 0.35f;
                 // a thin wisp off the tip, thicker on a long night
                 wispT -= dt;
                 if (wispT <= 0)

@@ -28,6 +28,7 @@ namespace HalcyonNoir
         public bool Seated;
         // life: where the head is looking, a talking gesture timer, an idle stance and a little sway
         public Vector3? LookTarget;
+        public Vector3? HeadPose;   // scripted head angle (pitch down +, yaw, roll), wins over LookTarget
         public float Talking;                    // seconds of talking gesture left
         public enum Stance { Plain, HandOnHip, HandsInPockets, ArmsBehind }
         public Stance Idle;
@@ -376,6 +377,7 @@ namespace HalcyonNoir
                 if (d.z < -0.2f && Mathf.Abs(yaw) > 60) yaw = 0;   // behind: don't wrench the neck
                 want = Quaternion.Euler(pitch, yaw, 0);
             }
+            if (HeadPose.HasValue) want = Quaternion.Euler(HeadPose.Value);
             if (Talking > 0) want *= Quaternion.Euler(Mathf.Sin(talkPhase * 1.3f) * 4f, Mathf.Sin(talkPhase * 0.6f) * 5f, Mathf.Sin(talkPhase * 0.9f) * 2f);
             else want *= Quaternion.Euler(Mathf.Sin(Time.time * 0.5f + swaySeed) * 1.5f, Mathf.Sin(Time.time * 0.23f + swaySeed) * 4f, 0);
             headHeld = Quaternion.Slerp(headHeld, want, 1 - Mathf.Exp(-dt * 5f));
