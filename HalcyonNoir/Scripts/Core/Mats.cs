@@ -210,5 +210,48 @@ namespace HalcyonNoir
             r.receiveShadows = false;
             return go;
         }
+
+        // A box that narrows or widens from bottom to top (a frustum), flat-shaded: the building block for
+        // anything that shouldn't look like a stack of crates. bottom/top are full sizes in x and z; the top
+        // can be shifted (lean) in x/z. Meshes are shared between identical shapes.
+        static readonly System.Collections.Generic.Dictionary<string, Mesh> taperCache = new System.Collections.Generic.Dictionary<string, Mesh>();
+        public static GameObject Taper(Transform parent, Vector3 localPos, Vector2 bottom, Vector2 top, float height, Material mat,
+            Vector3? euler = null, Vector2? lean = null)
+        {
+            var off = lean ?? Vector2.zero;
+            string key = $"{bottom.x:F3},{bottom.y:F3},{top.x:F3},{top.y:F3},{height:F3},{off.x:F3},{off.y:F3}";
+            if (!taperCache.TryGetValue(key, out var mesh))
+            {
+                float h = height / 2;
+                var b = new[] { new Vector3(-bottom.x / 2, -h, -bottom.y / 2), new Vector3(bottom.x / 2, -h, -bottom.y / 2), new Vector3(bottom.x / 2, -h, bottom.y / 2), new Vector3(-bottom.x / 2, -h, bottom.y / 2) };
+                var t = new[] { new Vector3(-top.x / 2 + off.x, h, -top.y / 2 + off.y), new Vector3(top.x / 2 + off.x, h, -top.y / 2 + off.y), new Vector3(top.x / 2 + off.x, h, top.y / 2 + off.y), new Vector3(-top.x / 2 + off.x, h, top.y / 2 + off.y) };
+                var faces = new[] {
+                    new[] { b[0], b[1], b[2], b[3] }, new[] { t[0], t[1], t[2], t[3] },
+                    new[] { b[0], b[1], t[1], t[0] }, new[] { b[1], b[2], t[2], t[1] },
+                    new[] { b[2], b[3], t[3], t[2] }, new[] { b[3], b[0], t[0], t[3] } };
+                var centre = Vector3.up * 0f + new Vector3(off.x, 0, off.y) * 0.5f;
+                var verts = new System.Collections.Generic.List<Vector3>();
+                var tris = new System.Collections.Generic.List<int>();
+                foreach (var q in faces)
+                {
+                    var fc = (q[0] + q[1] + q[2] + q[3]) / 4;
+                    var n = Vector3.Cross(q[1] - q[0], q[2] - q[0]);
+                    bool flip = Vector3.Dot(n, fc - centre) < 0;
+                    int i0 = verts.Count;
+                    verts.AddRange(flip ? new[] { q[3], q[2], q[1], q[0] } : q);
+                    tris.AddRange(new[] { i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3 });
+                }
+                mesh = new Mesh { name = "Taper" };
+                mesh.SetVertices(verts);
+                mesh.SetTriangles(tris, 0);
+                mesh.RecalculateNormals();
+                mesh.RecalculateBounds();
+                taperCache[key] = mesh;
+            }
+            var go = MeshObject("Taper", mesh, mat, parent);
+            go.transform.localPosition = localPos;
+            if (euler.HasValue) go.transform.localEulerAngles = euler.Value;
+            return go;
+        }
     }
 }

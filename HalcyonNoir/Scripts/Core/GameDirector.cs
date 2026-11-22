@@ -7,7 +7,7 @@ namespace HalcyonNoir
 {
     public static class Game
     {
-        public const string Version = "v0.0.08";
+        public const string Version = "v0.0.09";
         public static bool Paused;
     }
 
@@ -34,7 +34,7 @@ namespace HalcyonNoir
             go.AddComponent<GameDirector>();
             if (DevArgs.ShotDir != null) go.AddComponent<DevShots>();
             // smoke tests run unattended: keep going when the window loses focus (normal play still pauses)
-            if (DevArgs.ShotDir != null || DevArgs.Auto || DevArgs.SkipToFight || DevArgs.LightUp) Application.runInBackground = true;
+            if (DevArgs.ShotDir != null || DevArgs.Auto || DevArgs.SkipToFight || DevArgs.LightUp || DevArgs.MechTurn) Application.runInBackground = true;
         }
     }
 
@@ -53,6 +53,7 @@ namespace HalcyonNoir
         public static bool CallIn => Index("-hn-callin") >= 0;
         public static bool Finish => Index("-hn-finish") >= 0;
         public static bool LightUp => Index("-hn-lightup") >= 0;   // film the light-up close from three angles   // with -hn-fight: break the crab after a few seconds and play the finisher
+        public static bool MechTurn => Index("-hn-mech") >= 0;   // film the Graven from all sides
         public static string WavDir => Value("-hn-wav");   // dump the synthesized music and rain as .wav files   // jump straight to calling the Graven (auto-advances)
         public static string ShotDir => Value("-hn-shots");
         public static float ShotEvery => float.TryParse(Value("-hn-shot-every"), System.Globalization.NumberStyles.Float,
@@ -416,6 +417,43 @@ namespace HalcyonNoir
             {
                 outcome = 2; ui.Sharp = true;
                 yield return StartFight();
+                yield break;
+            }
+            if (DevArgs.MechTurn)
+            {
+                // film the Graven: a slow turnaround, a few poses, a close look at the head
+                DrainHarbor(1);
+                var gp = City.Arena + new Vector3(-10, 0, 0);
+                gp.y = City.Arena.y;
+                var gm = GravenController.Make(gp, Quaternion.LookRotation(Vector3.left));
+                gm.Scripted = true;
+                gm.GetComponent<CharacterController>().enabled = false;
+                gm.ScriptPose(0, 0, 0, 0);
+                ui.Letterbox = 1;
+                StartCoroutine(Fade(0, 0.5f));
+                var mid = gp + Vector3.up * 10;
+                for (int i = 0; i < 8; i++)
+                {
+                    float a = i * 45f * Mathf.Deg2Rad;
+                    var dir = new Vector3(-Mathf.Cos(a), 0, Mathf.Sin(a));
+                    Shot(mid + dir * 34 + Vector3.up * (i % 2 == 0 ? -4 : 3), mid);
+                    cam.transform.position = orbit.CinePos; cam.transform.LookAt(orbit.CineLook);
+                    yield return Wait(0.7f);
+                }
+                Shot(gp + new Vector3(-22, 3, 12), mid);
+                cam.transform.position = orbit.CinePos; cam.transform.LookAt(orbit.CineLook);
+                for (float t = 0; t < 2.4f; t += Time.deltaTime) { gm.ScriptWalk(t * 3f, 1); yield return null; }
+                for (float t = 0; t < 1.2f; t += Time.deltaTime) { gm.ScriptShove(Mathf.Clamp01(t / 0.6f)); yield return null; }
+                for (float t = 0; t < 1.6f; t += Time.deltaTime) { gm.ScriptPose(Mathf.Clamp01(t / 0.8f), Mathf.Clamp01(t / 0.8f), 0, Mathf.Clamp01(t / 1.2f)); yield return null; }
+                gm.ScriptPose(0, 0, 0, 0);
+                var hp = gm.VisorPos;
+                Shot(hp + new Vector3(-7, -1.5f, 3.5f), hp);
+                cam.transform.position = orbit.CinePos; cam.transform.LookAt(orbit.CineLook);
+                yield return Wait(1.2f);
+                Shot(hp + new Vector3(-5, -6f, -5f), hp + Vector3.down * 3);
+                cam.transform.position = orbit.CinePos; cam.transform.LookAt(orbit.CineLook);
+                yield return Wait(1.2f);
+                Application.Quit();
                 yield break;
             }
             if (DevArgs.LightUp)

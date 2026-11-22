@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.0.09
+- **The Graven, redesigned.** It no longer looks like a toy. It's built like the city that buried it: an art-deco
+  tower in a greatcoat.
+  - A narrow waist under a broad chest that tapers into a V, with deco chevrons on the hatch and a stepped
+    crown above it.
+  - A high collar turned up around a narrow helm. The visor is sunk under a heavy brow, and the jaw tapers to a
+    point, with a swept-back crest.
+  - Shoulders built from plates that step down and out, like the setbacks on a skyscraper, with swept fins.
+  - Tapered limbs instead of boxes and tubes. Flared gauntlets end in real fists: a knuckle plate, folded fingers
+    and a thumb. Diamond knees and elbows, and spurs on the elbows.
+  - Long plates hang off the back like coat-tails. Long pointed feet. Organ-pipe exhaust stacks.
+  - Lighter gunmetal with pale edge plates, plus its own key light and rim light, so the shape reads against
+    the night.
+- New dev switch: `-hn-mech` films the Graven from all sides and in its cutscene poses.
+
 ## v0.0.08
 - **Lighting up, done properly.** Vane takes his time now:
   - The cigarette goes to his lips and his chin comes down.

@@ -51,67 +51,131 @@ namespace HalcyonNoir
             return g;
         }
 
+        // The Graven is built like the city that buried it: an art-deco tower in a greatcoat. A narrow waist
+        // under a broad, tapering chest; a high collar standing up around a narrow helm, the visor sunk
+        // under a heavy brow; layered plates on the shoulders; flared gauntlets over real fists; long plates
+        // hanging off the back like coat-tails. Gunmetal, a little brass, amber light in thin lines.
+        // (Pivot positions are fixed: the animation, cutscenes and hit points are all measured from them.)
         void BuildRig()
         {
             var t = transform;
-            var steel = Mats.Toon(new Color(0.17f, 0.18f, 0.22f), null, 0.12f);
-            var dark = Mats.Toon(new Color(0.09f, 0.09f, 0.11f), null, 0.12f);
-            var brass = Mats.Toon(new Color(0.62f, 0.5f, 0.3f), null, 0.1f);
+            var steel = Mats.Toon(new Color(0.21f, 0.23f, 0.29f), null, 0.1f);
+            var edge = Mats.Toon(new Color(0.4f, 0.42f, 0.5f), null, 0.1f);
+            var dark = Mats.Toon(new Color(0.075f, 0.075f, 0.095f), null, 0.1f);
+            var brass = Mats.Toon(new Color(0.6f, 0.48f, 0.28f), null, 0.08f);
             var glow = Mats.Glow(new Color(1f, 0.62f, 0.25f), 3f);
             var visorMat = Mats.Glow(new Color(1f, 0.7f, 0.3f), 4f);
+            GameObject T(Transform p, Vector3 pos, Vector2 bottom, Vector2 top, float h, Material m, Vector3? e = null, Vector2? lean = null) => Build.Taper(p, pos, bottom, top, h, m, e, lean);
+            GameObject C(Transform p, Vector3 pos, Vector3 size, Material m, Vector3? e = null) => Build.Part(p, PrimitiveType.Cube, pos, size, m, e);
 
-            // hips and legs
+            // ----- hips: a narrow pelvis, a belt, a plate between the legs and long tails behind -----
             hips = Build.Pivot(t, "Hips", new Vector3(0, 7.2f, 0));
-            Build.Part(hips, PrimitiveType.Cube, Vector3.zero, new Vector3(6.4f, 2.6f, 4.2f), dark);
-            Build.Part(hips, PrimitiveType.Cube, new Vector3(0, 0, 2.2f), new Vector3(3, 2, 0.4f), brass);
+            T(hips, new Vector3(0, -0.1f, 0), new Vector2(3.4f, 2.8f), new Vector2(5f, 3.6f), 2.2f, dark);
+            C(hips, new Vector3(0, 1.05f, 0), new Vector3(5.3f, 0.5f, 3.9f), edge);
+            C(hips, new Vector3(0, 1.0f, 1.98f), new Vector3(1.3f, 0.75f, 0.25f), brass);
+            T(hips, new Vector3(0, -1.5f, 1.75f), new Vector2(1.1f, 0.35f), new Vector2(1.8f, 0.45f), 2.6f, steel, new Vector3(-6, 0, 0));
+            for (int s = -1; s <= 1; s += 2)
+            {
+                T(hips, new Vector3(s * 1.35f, -2.5f, -2.25f), new Vector2(2.4f, 0.32f), new Vector2(2.5f, 0.4f), 5.6f, steel, new Vector3(16, 0, s * -3));
+                C(hips, new Vector3(s * 1.35f, -5.15f, -3.0f), new Vector3(2.35f, 0.18f, 0.42f), brass, new Vector3(16, 0, s * -3));
+            }
+
+            // ----- legs: tapered thighs, a knee, a calf that narrows to the ankle, long pointed feet -----
             legL = Build.Pivot(hips, "LegL", new Vector3(-2.3f, -0.6f, 0));
             legR = Build.Pivot(hips, "LegR", new Vector3(2.3f, -0.6f, 0));
             foreach (var leg in new[] { legL, legR })
             {
-                Build.Part(leg, PrimitiveType.Cube, new Vector3(0, -2f, 0), new Vector3(2.6f, 3.8f, 2.8f), steel);
-                Build.Part(leg, PrimitiveType.Cylinder, new Vector3(0, -4.6f, 0.1f), new Vector3(2.4f, 1.6f, 2.4f), dark);
-                Build.Part(leg, PrimitiveType.Cube, new Vector3(0, -6f, 0.8f), new Vector3(3.2f, 1.2f, 4.8f), steel);
-                Build.Part(leg, PrimitiveType.Cube, new Vector3(0, -3.2f, 1.45f), new Vector3(1.4f, 0.3f, 0.2f), glow);
+                int s = leg == legL ? -1 : 1;
+                T(leg, new Vector3(0, -1.9f, 0), new Vector2(1.8f, 2.0f), new Vector2(2.4f, 2.6f), 3.4f, steel);
+                T(leg, new Vector3(s * 1.3f, -1.3f, 0), new Vector2(0.35f, 2.5f), new Vector2(0.35f, 2.9f), 3.2f, edge, new Vector3(0, 0, s * 8));   // outer thigh plate
+                C(leg, new Vector3(0, -3.75f, 0.45f), new Vector3(1.5f, 1.5f, 1.5f), edge, new Vector3(45, 0, 0));                                   // knee
+                T(leg, new Vector3(0, -5.0f, 0), new Vector2(1.5f, 1.7f), new Vector2(2.2f, 2.5f), 2.6f, dark);                                       // calf
+                T(leg, new Vector3(0, -4.85f, 1.2f), new Vector2(1.1f, 0.3f), new Vector2(1.8f, 0.36f), 2.5f, steel, new Vector3(-7, 0, 0));          // shin plate
+                C(leg, new Vector3(0, -4.85f, 1.42f), new Vector3(0.16f, 1.5f, 0.1f), glow, new Vector3(-7, 0, 0));
+                C(leg, new Vector3(0, -6.15f, 0), new Vector3(1.3f, 0.6f, 1.4f), dark);                                                                // ankle
+                T(leg, new Vector3(0, -6.2f, 0.7f), new Vector2(2.3f, 4.4f), new Vector2(1.7f, 3.2f), 0.8f, steel);                                     // foot
+                T(leg, new Vector3(0, -6.25f, 3.05f), new Vector2(1.9f, 0.8f), new Vector2(0.9f, 0.4f), 0.7f, edge, new Vector3(-90, 0, 0));          // toe point
+                C(leg, new Vector3(0, -6.35f, -1.75f), new Vector3(0.5f, 0.5f, 1.2f), dark, new Vector3(-18, 0, 0));                                   // heel spur
             }
-            // torso
+
+            // ----- torso: a V from a narrow waist to broad shoulders -----
             torso = Build.Pivot(t, "Torso", new Vector3(0, 8.6f, 0));
-            Build.Part(torso, PrimitiveType.Cube, new Vector3(0, 3.2f, 0), new Vector3(8.6f, 6.2f, 5.2f), steel);
+            T(torso, new Vector3(0, 0.45f, 0), new Vector2(3.8f, 3.2f), new Vector2(5.2f, 3.9f), 1.8f, dark);                       // waist
+            for (int i = 0; i < 3; i++) C(torso, new Vector3(0, 0.0f + i * 0.5f, 1.75f + i * 0.08f), new Vector3(3.2f + i * 0.5f, 0.3f, 0.3f), edge);   // ribs of the belly
+            T(torso, new Vector3(0, 3.9f, 0), new Vector2(5.8f, 4.4f), new Vector2(9.4f, 5.3f), 5.2f, steel);                         // chest
             // the chest hatch: hinged at the bottom, it drops forward like a drawbridge to let the pilot in.
             // Behind it, the cockpit's amber light.
             Build.Part(torso, PrimitiveType.Quad, new Vector3(0, 3.4f, 2.62f), new Vector3(4.4f, 3.8f, 1), Mats.Glow(new Color(1f, 0.62f, 0.28f), 1.6f), new Vector3(0, 180, 0));
-            Build.Part(torso, PrimitiveType.Cube, new Vector3(0, 3.4f, 2.4f), new Vector3(4.6f, 4f, 0.3f), Mats.Toon(new Color(0.05f, 0.04f, 0.04f)));
+            C(torso, new Vector3(0, 3.4f, 2.4f), new Vector3(4.6f, 4f, 0.3f), Mats.Toon(new Color(0.05f, 0.04f, 0.04f)));
             hatch = Build.Pivot(torso, "Hatch", new Vector3(0, 1.2f, 2.7f));
-            Build.Part(hatch, PrimitiveType.Cube, new Vector3(0, 2.2f, 0), new Vector3(5.2f, 4.4f, 0.5f), dark);
-            Build.Part(hatch, PrimitiveType.Cube, new Vector3(0, 2.2f, -0.28f), new Vector3(4.6f, 3.8f, 0.08f), brass);
-            for (int i = 0; i < 3; i++) Build.Part(torso, PrimitiveType.Cube, new Vector3(0, 2.2f + i * 1.1f, 3f), new Vector3(4.2f - i * 0.9f, 0.25f, 0.2f), brass);
-            Build.Part(torso, PrimitiveType.Cube, new Vector3(0, 0.2f, 0), new Vector3(5.6f, 1.2f, 4.4f), dark);
-            // exhaust stacks on the back
+            T(hatch, new Vector3(0, 2.2f, 0), new Vector2(4.2f, 0.5f), new Vector2(5.4f, 0.5f), 4.4f, dark);
+            T(hatch, new Vector3(0, 2.2f, 0.28f), new Vector2(3.4f, 0.08f), new Vector2(4.5f, 0.08f), 3.8f, steel);
+            for (int i = 0; i < 4; i++) C(hatch, new Vector3(0, 0.9f + i * 0.85f, 0.34f), new Vector3(0.9f + i * 0.85f, 0.14f, 0.08f), brass);   // the deco chevron, widening upward
+            // pectoral plates either side of the hatch, and the stepped crown above it
             for (int s = -1; s <= 1; s += 2)
             {
-                Build.Part(torso, PrimitiveType.Cylinder, new Vector3(s * 2.2f, 7f, -2.4f), new Vector3(1, 2.4f, 1), dark);
-                Build.Part(torso, PrimitiveType.Cylinder, new Vector3(s * 2.2f, 9.3f, -2.4f), new Vector3(1.15f, 0.15f, 1.15f), brass);
+                T(torso, new Vector3(s * 3.25f, 4.4f, 2.45f), new Vector2(2.0f, 0.45f), new Vector2(3.0f, 0.5f), 3.2f, edge, new Vector3(-8, s * 16, 0));
+                C(torso, new Vector3(s * 3.4f, 3.0f, 2.5f), new Vector3(0.14f, 1.6f, 0.1f), glow, new Vector3(-8, s * 16, 0));
             }
-            // head
-            head = Build.Pivot(torso, "Head", new Vector3(0, 6.6f, 0.4f));
-            Build.Part(head, PrimitiveType.Cube, new Vector3(0, 1.1f, 0), new Vector3(3.2f, 2.4f, 3.2f), steel);
-            Build.Part(head, PrimitiveType.Cube, new Vector3(0, 2.5f, -0.2f), new Vector3(0.5f, 1.2f, 3f), brass);
-            visor = Build.Part(head, PrimitiveType.Cube, new Vector3(0, 1.3f, 1.62f), new Vector3(2.6f, 0.36f, 0.12f), visorMat).GetComponent<Renderer>();
-            Build.Part(head, PrimitiveType.Cube, new Vector3(0, 0.4f, 1.55f), new Vector3(2.4f, 0.9f, 0.3f), dark);
-            // shoulders and arms
+            for (int i = 0; i < 3; i++) C(torso, new Vector3(0, 6.0f + i * 0.32f, 2.45f - i * 0.25f), new Vector3(4.2f - i * 1.1f, 0.3f, 0.6f), i == 0 ? brass : edge);
+
+            // the high collar: plates standing up around the head, like a coat collar turned up against the rain
+            C(torso, new Vector3(0, 6.75f, 0.2f), new Vector3(2.0f, 1.0f, 2.0f), dark);   // neck
+            for (int s = -1; s <= 1; s += 2)
+                T(torso, new Vector3(s * 1.95f, 7.55f, -0.55f), new Vector2(0.5f, 2.6f), new Vector2(0.3f, 2.0f), 2.8f, edge, new Vector3(-6, s * 24, -s * 9), new Vector2(0, -0.3f));
+            T(torso, new Vector3(0, 7.5f, -1.75f), new Vector2(3.8f, 0.5f), new Vector2(4.4f, 0.4f), 2.8f, steel, new Vector3(-16, 0, 0));
+
+            // the back: a housing, two tall stacks and two short ones, like organ pipes
+            T(torso, new Vector3(0, 4.4f, -2.75f), new Vector2(4.6f, 1.5f), new Vector2(6.2f, 1.9f), 4.6f, dark);
             for (int s = -1; s <= 1; s += 2)
             {
-                Build.Part(torso, PrimitiveType.Sphere, new Vector3(s * 5.6f, 5.3f, 0), new Vector3(4.6f, 3.8f, 4.6f), steel);
-                Build.Part(torso, PrimitiveType.Cube, new Vector3(s * 5.9f, 6.9f, 0), new Vector3(3.8f, 0.4f, 4f), brass);
+                Build.Part(torso, PrimitiveType.Cylinder, new Vector3(s * 2.2f, 7.0f, -2.5f), new Vector3(0.9f, 2.6f, 0.9f), dark);
+                Build.Part(torso, PrimitiveType.Cylinder, new Vector3(s * 2.2f, 9.5f, -2.5f), new Vector3(1.05f, 0.12f, 1.05f), brass);
+                Build.Part(torso, PrimitiveType.Cylinder, new Vector3(s * 3.3f, 6.2f, -2.6f), new Vector3(0.6f, 1.9f, 0.6f), dark);
+                Build.Part(torso, PrimitiveType.Cylinder, new Vector3(s * 3.3f, 8.05f, -2.6f), new Vector3(0.7f, 0.1f, 0.7f), brass);
+            }
+
+            // ----- head: a narrow helm, wider at the brow than the jaw; the visor sunk in under the brow -----
+            head = Build.Pivot(torso, "Head", new Vector3(0, 6.6f, 0.4f));
+            T(head, new Vector3(0, 1.5f, -0.1f), new Vector2(1.8f, 2.4f), new Vector2(2.5f, 3.1f), 2.4f, steel, null, new Vector2(0, 0.25f));
+            T(head, new Vector3(0, 0.6f, 1.05f), new Vector2(0.7f, 0.9f), new Vector2(2.1f, 0.8f), 1.2f, edge, new Vector3(-8, 0, 0));       // jaw guard, tapering to a point
+            visor = C(head, new Vector3(0, 1.3f, 1.42f), new Vector3(2.1f, 0.26f, 0.12f), visorMat).GetComponent<Renderer>();
+            C(head, new Vector3(0, 1.3f, 1.36f), new Vector3(2.3f, 0.5f, 0.1f), Mats.Toon(new Color(0.02f, 0.02f, 0.03f)));      // the slot it sits in
+            C(head, new Vector3(0, 1.72f, 1.25f), new Vector3(2.75f, 0.42f, 0.95f), steel, new Vector3(16, 0, 0));          // heavy brow
+            T(head, new Vector3(0, 2.75f, -0.55f), new Vector2(0.32f, 3.2f), new Vector2(0.12f, 1.6f), 1.6f, brass, new Vector3(-28, 0, 0), new Vector2(0, -0.6f));   // crest, swept back
+            for (int s = -1; s <= 1; s += 2) C(head, new Vector3(s * 1.22f, 0.95f, 0.45f), new Vector3(0.28f, 1.3f, 1.9f), dark, new Vector3(0, s * 8, 0));          // cheek plates
+
+            // ----- shoulders and arms -----
+            for (int s = -1; s <= 1; s += 2)
+            {
+                // three plates stepping down and out, like the setbacks on a tower
+                for (int i = 0; i < 3; i++)
+                    T(torso, new Vector3(s * (5.4f + 0.4f * i), 6.6f - 0.85f * i, 0), new Vector2(4.2f - 0.35f * i, 4.5f - 0.3f * i), new Vector2(3.4f - 0.35f * i, 3.9f - 0.3f * i), 0.75f, i == 0 ? edge : steel, new Vector3(0, 0, -s * (16 + 7 * i)));
+                C(torso, new Vector3(s * 5.4f, 7.02f, 0), new Vector3(3.0f, 0.12f, 3.6f), brass, new Vector3(0, 0, -s * 16));
+                T(torso, new Vector3(s * 4.6f, 7.6f, -1.0f), new Vector2(0.3f, 2.4f), new Vector2(0.12f, 0.8f), 1.8f, edge, new Vector3(-24, 0, -s * 8), new Vector2(0, -0.5f));   // swept fin
+                C(torso, new Vector3(s * 5.6f, 4.9f, 0), new Vector3(2.4f, 2.4f, 2.4f), dark);                                     // shoulder joint
+
                 var arm = Build.Pivot(torso, s < 0 ? "ArmL" : "ArmR", new Vector3(s * 5.8f, 4.8f, 0));
-                Build.Part(arm, PrimitiveType.Cylinder, new Vector3(0, -2.4f, 0), new Vector3(1.9f, 2.3f, 1.9f), dark);
+                T(arm, new Vector3(0, -2.2f, 0), new Vector2(1.5f, 1.6f), new Vector2(2.0f, 2.1f), 3.8f, dark);
+                T(arm, new Vector3(s * 0.95f, -2.1f, 0), new Vector2(0.3f, 1.4f), new Vector2(0.35f, 1.9f), 2.8f, steel, new Vector3(0, 0, s * 4));
                 var fore = Build.Pivot(arm, "Fore", new Vector3(0, -4.6f, 0));
-                Build.Part(fore, PrimitiveType.Cylinder, new Vector3(0, -2.2f, 0), new Vector3(3f, 2.4f, 3f), steel);
-                Build.Part(fore, PrimitiveType.Cylinder, new Vector3(0, -1.2f, 0), new Vector3(3.15f, 0.15f, 3.15f), glow);
-                Build.Part(fore, PrimitiveType.Cylinder, new Vector3(0, -3.0f, 0), new Vector3(3.15f, 0.15f, 3.15f), glow);
-                Build.Part(fore, PrimitiveType.Cube, new Vector3(0, -5.2f, 0), new Vector3(3f, 2.8f, 3f), dark);
-                Build.Part(fore, PrimitiveType.Cube, new Vector3(0, -5.2f, 1.55f), new Vector3(2.6f, 0.4f, 0.2f), brass);
+                C(fore, new Vector3(0, 0.05f, 0), new Vector3(1.5f, 1.5f, 1.5f), edge, new Vector3(45, 0, 0));                  // elbow
+                T(fore, new Vector3(0, 0.0f, -1.0f), new Vector2(1.0f, 1.0f), new Vector2(0.15f, 0.15f), 1.3f, dark, new Vector3(-100, 0, 0));   // elbow spike
+                // the gauntlet: narrow at the elbow, flaring to a heavy cuff at the wrist
+                T(fore, new Vector3(0, -2.2f, 0), new Vector2(2.9f, 3.0f), new Vector2(1.8f, 1.9f), 3.4f, steel);
+                T(fore, new Vector3(0, -2.2f, 1.25f), new Vector2(1.7f, 0.3f), new Vector2(1.0f, 0.3f), 3.0f, edge, new Vector3(9, 0, 0));     // top plate
+                for (int v = -1; v <= 1; v += 2) C(fore, new Vector3(s * 1.2f, -2.6f, v * 0.45f), new Vector3(0.1f, 1.8f, 0.2f), glow, new Vector3(0, 0, -s * 9));
+                C(fore, new Vector3(0, -4.0f, 0), new Vector3(3.0f, 0.4f, 3.1f), brass);                                             // wrist cuff
+                // a fist, not a block: palm, knuckle plate, folded fingers, thumb
+                C(fore, new Vector3(0, -5.0f, -0.1f), new Vector3(2.3f, 1.9f, 2.3f), dark);
+                C(fore, new Vector3(0, -5.25f, 1.22f), new Vector3(2.45f, 0.75f, 0.55f), edge);
+                for (int i = 0; i < 4; i++) C(fore, new Vector3(-0.87f + i * 0.58f, -6.1f, 0.55f), new Vector3(0.52f, 0.85f, 1.5f), steel);
+                C(fore, new Vector3(-s * 1.2f, -5.2f, 0.75f), new Vector3(0.6f, 1.3f, 0.7f), steel, new Vector3(0, 0, s * 18));
                 if (s < 0) { armL = arm; foreL = fore; } else { armR = arm; foreR = fore; }
             }
+            // its own light: a cool key from up front and a rim from behind, so the shape reads against the night
+            Build.PointLight(torso, new Vector3(-4, 10, 16), new Color(0.66f, 0.74f, 0.95f), 42f, 1.7f);
+            Build.PointLight(torso, new Vector3(3, 14, -13), new Color(0.55f, 0.65f, 0.95f), 34f, 1.4f);
             foreach (var r in GetComponentsInChildren<Renderer>()) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
         }
 
