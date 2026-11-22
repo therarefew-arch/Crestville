@@ -154,6 +154,19 @@ namespace HalcyonNoir
             hatch.localEulerAngles = new Vector3(95 * hatchOpen, 0, 0);
         }
 
+        // A walking stride for cutscenes: legs swing, arms counter-swing, the torso rolls a little.
+        public void ScriptWalk(float phase, float amount)
+        {
+            ScriptPose(0, 0, 0, 0);
+            float s = Mathf.Sin(phase) * amount;
+            legL.localEulerAngles = new Vector3(22 * s, 0, 0);
+            legR.localEulerAngles = new Vector3(-22 * s, 0, 0);
+            armL.localEulerAngles = new Vector3(-20 - 14 * s, 0, 10);
+            armR.localEulerAngles = new Vector3(-20 + 14 * s, 0, -10);
+            torso.localEulerAngles = new Vector3(4 * amount, 6 * s, -3 * s);
+            hips.localPosition = new Vector3(0, 7.2f - Mathf.Abs(s) * 0.5f, 0);
+        }
+
         // Where Vane stands on the hand: on top of the fist block.
         public Vector3 PalmTop => foreR.TransformPoint(new Vector3(0, -5.2f, 0)) + Vector3.up * 1.5f * transform.lossyScale.y;
 

@@ -7,7 +7,7 @@ namespace HalcyonNoir
 {
     public static class Game
     {
-        public const string Version = "v0.0.04";
+        public const string Version = "v0.0.05";
         public static bool Paused;
     }
 
@@ -50,7 +50,8 @@ namespace HalcyonNoir
         static string Value(string k) { int i = Index(k); return i >= 0 && i + 1 < Args.Length ? Args[i + 1] : null; }
         public static bool SkipToFight => Index("-hn-fight") >= 0;
         public static bool Auto => Index("-hn-auto") >= 0;
-        public static bool CallIn => Index("-hn-callin") >= 0;   // jump straight to calling the Graven (auto-advances)
+        public static bool CallIn => Index("-hn-callin") >= 0;
+        public static string WavDir => Value("-hn-wav");   // dump the synthesized music and rain as .wav files   // jump straight to calling the Graven (auto-advances)
         public static string ShotDir => Value("-hn-shots");
         public static float ShotEvery => float.TryParse(Value("-hn-shot-every"), System.Globalization.NumberStyles.Float,
             System.Globalization.CultureInfo.InvariantCulture, out var s) && s > 0.2f ? s : 3f;
@@ -724,7 +725,7 @@ namespace HalcyonNoir
             mechCam.enabled = false;
             Shot(City.Arena + new Vector3(-70, 10, -40), City.Arena + new Vector3(40, 14, 0));
             cam.transform.position = orbit.CinePos;
-            Sound.I?.PlayMusic("fight", 0.5f);
+            Sound.I?.PlayMusic("fight", 0.5f, true);
             StartCoroutine(Fade(0, 1.2f));
             yield return Letterbox(1, 0.1f);
             Vector3 from = boss.transform.position, to = City.Arena + new Vector3(58, 0, 0);
@@ -779,7 +780,7 @@ namespace HalcyonNoir
             boss.transform.SetPositionAndRotation(City.Arena + new Vector3(40, 0, 0), Quaternion.LookRotation(Vector3.left));
             boss.ResetForFight();
             Fx.I.BaseTimeScale = 1;
-            Sound.I?.PlayMusic("fight", 0.5f);
+            Sound.I?.PlayMusic("fight", 0.5f, true);
         }
 
         IEnumerator Fight()

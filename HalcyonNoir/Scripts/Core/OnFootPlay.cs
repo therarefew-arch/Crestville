@@ -60,7 +60,8 @@ namespace HalcyonNoir
             yield return Letterbox(0, 0.4f);
 
             // fight
-            Sound.I?.PlayMusic("fight", 0.32f);
+            Sound.I?.PlayMusic("fight", 0.42f, true);
+            Sound.I?.Play("impact", 0.6f, 0.7f);
             phase = Phase.Brawl;
             float oldDist = orbit.Distance;
             orbit.Distance = 5.6f;

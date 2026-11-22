@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.0.05
+- **Your own music.** Drop an audio file named `investigation` (mp3, ogg or wav) into
+  `HalcyonNoir/Resources/Music/` and it replaces the investigation theme. A file named `fight` replaces the fight
+  music. Both loop. Without them, the game uses its synthesized music. `Resources/Music/README.md` explains it.
+- **New investigation theme.** It's a slow, cool-jazz piece for muted trumpet, brushed drums, walking bass and sparse
+  piano. It's 32 bars long (81 s), so the repeat isn't obvious.
+- **Fights switch the music hard.** The street ambush and the robot fight cut straight to the fight track with an
+  impact hit, instead of a slow crossfade. The fight track is longer (16 bars with a second section), with snare
+  fills, faster hi-hats and a driving synth line.
+- **Call-in polish.**
+  - The Graven rises farther out in the harbor.
+  - The camera holds a silent wide shot, low behind Vane, with a slow push-in while its visor flickers on.
+  - The Graven wades in to the pier in three heavy strides, with splashes, before it kneels.
+- New dev switch `-hn-wav <dir>` writes the synthesized music and rain to .wav files.
+
+
 ## v0.0.04
 - **Calling the Graven is now a scene, not a fade to black.**
   - Hold G and Vane raises his left wrist. The amber link band on it burns brighter as you hold.

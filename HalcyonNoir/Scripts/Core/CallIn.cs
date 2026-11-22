@@ -62,31 +62,36 @@ namespace HalcyonNoir
             var gFinal = g0 + delta;
             gv.ScriptPose(0, 0, 0, 0);
             gv.SetVisor(0);
-            gv.transform.position = gFinal + Vector3.down * 75f;
-            var standHead = gFinal + Vector3.up * 34f;
-            Debug.Log($"[CallIn] vane={p} graven={gFinal} palmAtReach={pierHand} shift={delta}");
+            toG = Flat(gFinal - p).normalized; side = Vector3.Cross(Vector3.up, toG);
+            // it surfaces further out, then wades in: the distance is what lets one low shot hold both the man and the machine
+            var gFar = gFinal + toG * 14f;
+            gv.transform.position = gFar + Vector3.down * 75f;
+            Debug.Log($"[CallIn] vane={p} graven={gFinal} far={gFar} palmAtReach={pierHand} shift={delta}");
 
             Sound.I?.Play("rumble", 1f, 0.5f);
             // wide, from the promenade: the pier, Vane a speck at the end of it, the machine coming up past the towers
-            Shot(new Vector3(31f, 3.5f, -21f), gFinal + Vector3.up * 13f);
+            Shot(new Vector3(31f, 3.5f, -21f), gFar + Vector3.up * 13f);
             orbit.CineSpeed = 1.5f;
             bool risen = false;
-            StartCoroutine(RiseGraven(gv, gFinal, 6.5f, () => risen = true));
+            StartCoroutine(RiseGraven(gv, gFar, 6.5f, () => risen = true));
             yield return Narrate("It came up out of the harbor the way it always does. Slowly. Like it had been waiting just under the surface for me to ask.");
             while (!risen) yield return null;
 
-            // ----- 3. it wakes: the poster shot, Vane small in the bottom of frame -----
-            toG = Flat(gFinal - p).normalized; side = Vector3.Cross(Vector3.up, toG);
-            player.FaceTowards(gFinal);
+            // ----- 3. it wakes: the poster shot -----
+            // Low on the deck, a few steps behind Vane, wide lens tilted up: him in the foreground at the bottom of
+            // frame, the Graven standing over him against the towers. No subtitles here; the frame does the talking.
+            player.FaceTowards(gFar);
             f.ArmLPose = new Vector3(-10, 0, 8); f.ForeLBend = -1;
             f.LinkGlow = 0.5f;
-            orbit.CineSpeed = 2.5f;
-            // low behind Vane with a wide lens: him at the bottom of frame, the Graven filling the rest
-            cam.fieldOfView = 70;
-            var posterCam = p - toG * 6f - side * 0.9f + Vector3.up * 0.5f;   // inside the railings, on the deck
-            Shot(posterCam, posterCam + (toG * Mathf.Cos(33 * Mathf.Deg2Rad) + Vector3.up * Mathf.Sin(33 * Mathf.Deg2Rad)) * 10f);
-            yield return Wait(1.2f);
-            for (float t = 0; t < 1.2f; t += Time.unscaledDeltaTime)
+            orbit.CineSpeed = 6f;
+            cam.fieldOfView = 64;
+            var posterCam = p - toG * 9f - side * 1.3f + Vector3.up * 0.35f;
+            var posterDir = (toG * Mathf.Cos(15 * Mathf.Deg2Rad) + Vector3.up * Mathf.Sin(15 * Mathf.Deg2Rad)) + side * 0.06f;
+            Shot(posterCam, posterCam + posterDir * 10f);
+            yield return Wait(1.0f);
+            orbit.CineSpeed = 0.35f;            // a slow push in while it wakes
+            orbit.CinePos = posterCam + toG * 1.2f;
+            for (float t = 0; t < 1.3f; t += Time.unscaledDeltaTime)
             {
                 gv.SetVisor(Mathf.PerlinNoise(t * 14f, 0.2f) > 0.45f ? 1.5f + t * 2 : 0);
                 yield return null;
@@ -97,10 +102,19 @@ namespace HalcyonNoir
             Fx.I?.Steam(gv.ExhaustPos(-1), 25, 2.5f);
             Fx.I?.Steam(gv.ExhaustPos(1), 25, 2.5f);
             Fx.I?.Shake(0.4f, 0.6f);
+            f.LinkGlow = 0.9f;                  // the band answers the visor
+            yield return Wait(2.6f);
+
+            // ----- 3b. it wades in to the pier -----
+            cam.fieldOfView = 55;
+            orbit.CineSpeed = 2.5f;
+            Shot(pierHand - toG * 24f + side * 16f + Vector3.up * 5f, Vector3.Lerp(pierHand, gFar + Vector3.up * 16f, 0.6f));
+            bool waded = false;
+            StartCoroutine(WadeGraven(gv, gFinal, 4.2f, () => waded = true));
             yield return Narrate("Two eyes' worth of light in a single slit. It looked down at me the way it always does. Like it knew me better than I did.");
+            while (!waded) yield return null;
 
             // ----- 4. it kneels and puts its hand down -----
-            cam.fieldOfView = 55;
             Shot(pierHand - toG * 22f + side * 14f + Vector3.up * 6f, Vector3.Lerp(pierHand, gFinal + Vector3.up * 14f, 0.5f));
             Sound.I?.Play("bigstep", 1f, 0.55f);
             for (float t = 0; t < 1; t += Time.unscaledDeltaTime / 3.2f)
@@ -187,6 +201,34 @@ namespace HalcyonNoir
             gv.transform.position = to;
             Sound.I?.Play("bigstep", 1f, 0.45f);
             Fx.I?.Shake(0.8f, 0.6f);
+            done();
+        }
+
+        // Three slow strides through the shallows: legs swing, the body rolls, water thrown up at every step.
+        IEnumerator WadeGraven(GravenController gv, Vector3 to, float dur, System.Action done)
+        {
+            var from = gv.transform.position;
+            float lastSin = 0;
+            for (float t = 0; t < 1; t += Time.unscaledDeltaTime / dur)
+            {
+                float k = Mathf.SmoothStep(0, 1, t);
+                gv.transform.position = Vector3.Lerp(from, to, k);
+                float phase = t * Mathf.PI * 3f;   // three strides
+                float amt = Mathf.Sin(Mathf.Clamp01(t) * Mathf.PI);
+                gv.ScriptWalk(phase, amt);
+                float s = Mathf.Sin(phase);
+                if (Mathf.Sign(s) != Mathf.Sign(lastSin))
+                {
+                    Sound.I?.Play("bigstep", 0.9f, 0.5f);
+                    Fx.I?.Shake(0.5f, 0.35f);
+                    var foot = gv.transform.position + gv.transform.right * (s > 0 ? -3.3f : 3.3f) + gv.transform.forward * 3f;
+                    Fx.I?.Splash(new Vector3(foot.x, -2f, foot.z), 40, 5);
+                }
+                lastSin = s;
+                yield return null;
+            }
+            gv.transform.position = to;
+            gv.ScriptPose(0, 0, 0, 0);
             done();
         }
 

@@ -5,7 +5,7 @@ namespace HalcyonNoir
 {
     // Every sound in the slice is synthesized at startup: rain, a slow noir jazz loop,
     // the fight theme and the impacts. No audio files needed.
-    public class Sound : MonoBehaviour
+    public partial class Sound : MonoBehaviour
     {
         public static Sound I;
         const int SR = 22050;
@@ -33,7 +33,7 @@ namespace HalcyonNoir
             clips["rain"] = MakeRain();
             clips["thunder"] = MakeThunder();
             drips = new[] { MakeDrip(1100, 40), MakeDrip(1500, 55), MakeDrip(1850, 70), MakeDrip(900, 35), MakeDrip(2300, 90), MakeDrip(1300, 30) };
-            clips["noir"] = MakeNoir();
+            clips["noir"] = MakeCool();
             clips["fight"] = MakeFight();
             clips["thump"] = MakeThump(55f, 0.5f, 0.9f);
             clips["impact"] = MakeImpact();
@@ -48,27 +48,38 @@ namespace HalcyonNoir
             clips["rumble"] = MakeRumble();
             clips["charge"] = MakeCharge();
             clips["roar"] = MakeRoar();
+            // Your own tracks win: drop an audio file named "investigation" or "fight" (mp3, ogg or wav) into
+            // HalcyonNoir/Resources/Music/ and it replaces the synthesized theme. It loops.
+            foreach (var (key, file) in new[] { ("noir", "investigation"), ("fight", "fight") })
+            {
+                var custom = Resources.Load<AudioClip>("Music/" + file);
+                if (custom != null) { clips[key] = custom; Debug.Log($"[Sound] using your track Music/{file} for {key}"); }
+            }
+            if (!string.IsNullOrEmpty(DevArgs.WavDir)) foreach (var k in new[] { "noir", "fight", "rain" }) WriteWav(clips[k], DevArgs.WavDir);
         }
 
         void Update()
         {
             var other = activeMusic == music ? music2 : music;
             activeMusic.volume = Mathf.MoveTowards(activeMusic.volume, musicTarget * MasterVolume, Time.unscaledDeltaTime * 0.35f);
-            other.volume = Mathf.MoveTowards(other.volume, 0, Time.unscaledDeltaTime * 0.5f);
+            other.volume = Mathf.MoveTowards(other.volume, 0, Time.unscaledDeltaTime * fadeOutSpeed);
             if (other.volume <= 0 && other.isPlaying) other.Stop();
             RainDetail();
         }
 
-        public void PlayMusic(string name, float volume = 0.45f)
+        // cut: start the new track at full level and drop the old one fast (a fight starting). Otherwise crossfade.
+        public void PlayMusic(string name, float volume = 0.45f, bool cut = false)
         {
             if (!clips.TryGetValue(name, out var c)) return;
             if (activeMusic.clip == c && activeMusic.isPlaying) { musicTarget = volume; return; }
             activeMusic = activeMusic == music ? music2 : music;
             activeMusic.clip = c;
-            activeMusic.volume = 0;
+            activeMusic.volume = cut ? volume * MasterVolume : 0;
             activeMusic.Play();
             musicTarget = volume;
+            fadeOutSpeed = cut ? 2.5f : 0.5f;
         }
+        float fadeOutSpeed = 0.5f;
         public void MusicVolume(float v) => musicTarget = v;
 
         public void Ambience(string name, float volume)
@@ -188,98 +199,6 @@ namespace HalcyonNoir
             }
         }
 
-        // Slow minor-key jazz: soft electric piano chords, walking bass, brushed snare.
-        AudioClip MakeNoir()
-        {
-            float bpm = 66, beat = 60f / bpm;
-            int bars = 16, beatsPerBar = 4;   // two eight-bar halves: A, then a darker B with its own melody
-            float len = bars * beatsPerBar * beat;
-            int n = (int)(len * SR) + SR;
-            var d = new float[n];
-            int[][] chords = {
-                new[] { 57, 60, 64, 67 }, new[] { 53, 57, 60, 64 }, new[] { 50, 53, 57, 60, 64 }, new[] { 52, 56, 59, 62 },
-                new[] { 57, 60, 64, 67 }, new[] { 55, 59, 62, 65 }, new[] { 53, 57, 60, 64 }, new[] { 52, 56, 59, 62, 65 } };
-            int[][] bass = {
-                new[] { 45, 48, 52, 50 }, new[] { 41, 45, 48, 47 }, new[] { 38, 41, 45, 44 }, new[] { 40, 44, 47, 44 },
-                new[] { 45, 43, 41, 40 }, new[] { 43, 47, 50, 47 }, new[] { 41, 45, 48, 45 }, new[] { 40, 44, 47, 40 } };
-            // B half: Am7, Dm9, G7, Cmaj7, Fmaj7, Bm7b5, E7, E7b9
-            int[][] chordsB = {
-                new[] { 57, 60, 64, 67 }, new[] { 50, 53, 57, 60, 64 }, new[] { 55, 59, 62, 65 }, new[] { 52, 55, 59, 60 },
-                new[] { 53, 57, 60, 64 }, new[] { 50, 53, 57, 59 }, new[] { 52, 56, 59, 62 }, new[] { 52, 56, 59, 62, 65 } };
-            int[][] bassB = {
-                new[] { 45, 48, 52, 50 }, new[] { 38, 41, 45, 43 }, new[] { 43, 47, 50, 47 }, new[] { 48, 47, 45, 43 },
-                new[] { 41, 45, 48, 45 }, new[] { 47, 45, 44, 42 }, new[] { 40, 44, 47, 44 }, new[] { 40, 41, 44, 40 } };
-            for (int b = 0; b < bars; b++)
-            {
-                float t0 = b * beatsPerBar * beat;
-                // piano chord on beat 1 and an off-beat stab on the "and" of 3
-                foreach (var start in new[] { 0f, 2.5f })
-                    foreach (int note in (b < 8 ? chords : chordsB)[b % 8])
-                    {
-                        float f = Mtof(note);
-                        int s0 = (int)((t0 + start * beat + note * 0.0007f) * SR);
-                        int dur = (int)((start == 0 ? 2.4f : 1.4f) * beat * SR);
-                        float amp = start == 0 ? 0.05f : 0.032f;
-                        for (int j = 0; j < dur && s0 + j < n; j++)
-                        {
-                            float t = j / (float)SR;
-                            float env = Mathf.Exp(-t * 1.6f) * Mathf.Min(1, j / 200f);
-                            float v = Mathf.Sin(2 * Mathf.PI * f * t) + 0.3f * Mathf.Sin(4 * Mathf.PI * f * t) * Mathf.Exp(-t * 4) + 0.1f * Mathf.Sin(2 * Mathf.PI * f * 3.01f * t);
-                            d[s0 + j] += v * env * amp;
-                        }
-                    }
-                // walking bass, one note per beat
-                for (int q = 0; q < 4; q++)
-                {
-                    float f = Mtof((b < 8 ? bass : bassB)[b % 8][q] - 12);
-                    int s0 = (int)((t0 + q * beat) * SR);
-                    int dur = (int)(beat * 0.95f * SR);
-                    for (int j = 0; j < dur && s0 + j < n; j++)
-                    {
-                        float t = j / (float)SR;
-                        float env = Mathf.Exp(-t * 2.2f) * Mathf.Min(1, j / 80f);
-                        d[s0 + j] += (Mathf.Sin(2 * Mathf.PI * f * t) + 0.25f * Mathf.Sin(4 * Mathf.PI * f * t)) * env * 0.16f;
-                    }
-                }
-                // brushes on 2 and 4, a soft swish on every beat
-                for (int q = 0; q < 8; q++)
-                {
-                    int s0 = (int)((t0 + q * beat * 0.5f + (q % 2 == 1 ? beat * 0.16f : 0)) * SR);
-                    bool backbeat = q == 2 || q == 6;
-                    int dur = (int)((backbeat ? 0.28f : 0.12f) * SR);
-                    float lp = 0;
-                    for (int j = 0; j < dur && s0 + j < n; j++)
-                    {
-                        lp += (Noise() - lp) * 0.5f;
-                        float env = Mathf.Exp(-j / (backbeat ? 1800f : 500f));
-                        d[s0 + j] += (Noise() - lp) * env * (backbeat ? 0.05f : 0.018f);
-                    }
-                }
-            }
-            // a lonely muted-trumpet-ish line over the last four bars of each half; the second answers the first
-            int[] melA = { 76, 74, 72, 71, 72, 69, 0, 0, 72, 74, 76, 79, 77, 76, 74, 0 };
-            int[] melB = { 72, 71, 69, 0, 76, 74, 72, 71, 69, 68, 69, 71, 69, 0, 0, 0 };
-            for (int k = 0; k < 32; k++)
-            {
-                int note = k < 16 ? melA[k] : melB[k - 16];
-                if (note == 0) continue;
-                float f = Mtof(note - 12);
-                int startBar = k < 16 ? 4 : 12;
-                int s0 = (int)((startBar * beatsPerBar * beat + (k % 16) * beat) * SR);
-                int dur = (int)(beat * 1.05f * SR);
-                for (int j = 0; j < dur && s0 + j < n; j++)
-                {
-                    float t = j / (float)SR;
-                    float env = Mathf.Min(1, t * 8) * Mathf.Exp(-t * 1.2f);
-                    float vib = 1 + 0.004f * Mathf.Sin(2 * Mathf.PI * 5.5f * t);
-                    float ph = 2 * Mathf.PI * f * vib * t;
-                    float v = Mathf.Sin(ph) * 0.6f + Mathf.Sin(2 * ph) * 0.3f + Mathf.Sin(3 * ph) * 0.15f;
-                    d[s0 + j] += v * env * 0.045f;
-                }
-            }
-            return Clip("noir", Loopify(d, SR / 2));
-        }
-
         // Driving fight theme: pounding low brass, timpani-like kicks, snare and a pulsing bass.
         AudioClip MakeFight()
         {
@@ -305,6 +224,35 @@ namespace HalcyonNoir
                         ph += f / SR;
                         float saw = 2 * (ph - Mathf.Floor(ph + 0.5f));
                         d[s0 + j] += saw * Mathf.Exp(-t * 6f) * 0.11f;
+                    }
+                }
+                // driving sixteenth-note hats, accented on the beat
+                for (int s = 0; s < 16; s++)
+                {
+                    int s0 = (int)((t0 + s * beat * 0.25f) * SR);
+                    float amp = s % 4 == 0 ? 0.05f : s % 2 == 0 ? 0.03f : 0.02f;
+                    float hp = 0;
+                    for (int j = 0; j < SR * 0.04f && s0 + j < n; j++)
+                    {
+                        float nz = Noise(); hp += (nz - hp) * 0.55f;
+                        d[s0 + j] += (nz - hp) * Mathf.Exp(-j / 180f) * amp;
+                    }
+                }
+                // a tense ostinato a fifth and an octave up: root, fifth, minor sixth, fifth, in sixteenths
+                {
+                    int[] cell = { 0, 7, 8, 7 };
+                    for (int s = 0; s < 16; s++)
+                    {
+                        float f = Mtof(roots[b] + 12 + cell[s % 4]);
+                        int s0 = (int)((t0 + s * beat * 0.25f) * SR);
+                        float ph = 0;
+                        for (int j = 0; j < SR * beat * 0.22f && s0 + j < n; j++)
+                        {
+                            float t = j / (float)SR;
+                            ph += f / SR;
+                            float sq = (ph - Mathf.Floor(ph)) < 0.5f ? 1 : -1;
+                            d[s0 + j] += sq * Mathf.Exp(-t * 18f) * (b >= 8 ? 0.022f : 0.014f);
+                        }
                     }
                 }
                 // kicks on 1 and 3 (plus a pickup), snare on 2 and 4
