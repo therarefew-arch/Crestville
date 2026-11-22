@@ -159,6 +159,7 @@ namespace HalcyonNoir
         public void FinishTyping() { if (Line != null) shown = Line.Length; }
         public void ClearLine() { Line = null; Speaker = null; }
         public void Toast(string text, Color? c = null) => toasts.Add((text, 0, c ?? new Color(0.95f, 0.72f, 0.38f)));
+        public void ClearToasts() => toasts.Clear();
         public void Floater(Vector3 world, string text, Color c, float size = 1f) => floaters.Add((world, text, 0, c, size));
 
         void Update()

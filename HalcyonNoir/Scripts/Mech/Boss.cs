@@ -427,6 +427,7 @@ namespace HalcyonNoir
             return d;
         }
 
+        public void DevBreak() { Hp = MaxHp * 0.1f; Stagger(30); }   // -hn-finish smoke test
         void Stagger(float seconds)
         {
             Posture = 100;

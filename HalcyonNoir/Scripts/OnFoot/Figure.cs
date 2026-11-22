@@ -10,6 +10,7 @@ namespace HalcyonNoir
         public Transform Body, Head, LegL, LegR, ArmL, ArmR;
         public Transform ForeL, ForeR;          // elbows (hero only)
         public Transform[] CoatTails;           // hero only
+        public Transform Skirt;                 // the generic long coat or dress, tucked up when seated
         public float WalkPhase;
         public float Speed01;     // 0 idle .. 1 running
         public bool Smoking;
@@ -69,7 +70,7 @@ namespace HalcyonNoir
             // torso and coat
             Build.Part(body, PrimitiveType.Capsule, new Vector3(0, 1.28f, 0), new Vector3(0.46f, 0.42f, 0.3f), coat);
             if (look.longCoat || look.dress)
-                Build.Part(body, PrimitiveType.Cylinder, new Vector3(0, 0.82f, 0), new Vector3(0.5f, 0.3f, 0.36f), coat);
+                f.Skirt = Build.Part(body, PrimitiveType.Cylinder, new Vector3(0, 0.82f, 0), new Vector3(0.5f, 0.3f, 0.36f), coat).transform;
             Build.Part(body, PrimitiveType.Cube, new Vector3(0, 1.46f, 0.13f), new Vector3(0.12f, 0.24f, 0.05f), shirt);
             // arms
             f.ArmL = Build.Pivot(body, "ArmL", new Vector3(-0.29f, 1.56f, 0));
@@ -316,6 +317,9 @@ namespace HalcyonNoir
                 ForeR.localRotation = Quaternion.Slerp(ForeR.localRotation, Quaternion.Euler(ForeRBend >= 0 ? -ForeRBend : autoR, 0, 0), k);
             }
 
+            if (Skirt != null) { Skirt.localPosition = new Vector3(0, Seated ? 1.0f : 0.82f, Seated ? 0.06f : 0); Skirt.localScale = new Vector3(0.5f, Seated ? 0.12f : 0.3f, Seated ? 0.5f : 0.36f); }
+
+
             // the coat tails trail behind when moving and sway in the wind
             if (CoatTails != null)
             {
@@ -340,6 +344,8 @@ namespace HalcyonNoir
                     float x = back ? -(tailSwing + wind) : side ? -wind * 0.5f : -Mathf.Abs(legSwing) - wind * 0.3f;
                     if (Seated) x = back ? 0 : side ? 0 : -75;
                     tr.localEulerAngles = new Vector3(x, baseYaw, 0);
+                    // sitting, the back and side panels bunch up on the seat instead of hanging down through it
+                    tr.localScale = new Vector3(1, Seated && (back || side) ? 0.12f : 1, 1);
                 }
             }
 

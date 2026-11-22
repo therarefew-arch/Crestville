@@ -126,6 +126,7 @@ namespace HalcyonNoir
         public Vector3 CockpitDoor => torso.TransformPoint(new Vector3(0, 3.0f, 1.6f));
         public Vector3 ExhaustPos(int side) => torso.TransformPoint(new Vector3(side * 2.2f, 9.6f, -2.4f));
         public Vector3 VisorPos => visor.transform.position;
+        public float VisorBoost;   // extra glow on the visor while it charges the finishing beam
 
         public void SetVisor(float intensity)
         {
@@ -436,7 +437,7 @@ namespace HalcyonNoir
         bool finisherPunched;
         public void BeginFinisher() { Enter(St.Finisher, 99); ChargeLevel = 1; finisherPunched = false; }
         public void FinisherPunch() { stT = 0; finisherPunched = true; }
-        public void EndFinisher() { ChargeLevel = 0; Enter(St.Idle, 0); }
+        public void EndFinisher() { ChargeLevel = 0; VisorBoost = 0; Enter(St.Idle, 0); }
 
         public void ResetForFight(float hpMultiplier)
         {
@@ -484,14 +485,17 @@ namespace HalcyonNoir
                     aR = new Vector3(-40, 0, -10);
                     break;
                 }
-                case St.Finisher when !finisherPunched:
+                case St.Finisher:
+                    // braced for the visor beam: feet planted, arms thrown back, chest square to the target
+                    aL = new Vector3(25, 0, 38); aR = new Vector3(25, 0, -38);
+                    torsoRot = new Vector3(-6 + 10 * VisorBoost / 12f, Mathf.Sin(Time.time * 40) * 0.6f * VisorBoost / 12f, 0);
+                    break;
                 case St.Charging:
                     aR = new Vector3(20, 0, -20); fR = -1f + Mathf.Sin(Time.time * 30) * 0.15f * ChargeLevel;
                     aL = new Vector3(-70, 20, 0);
                     torsoRot = new Vector3(0, -30 * ChargeLevel, 0);
                     break;
                 case St.Release:
-                case St.Finisher when finisherPunched:
                 {
                     float p = Mathf.Clamp01(t / 0.2f) * Mathf.Clamp01(1 - (t - 0.5f) / 0.5f);
                     aR = new Vector3(-95 * p, 0, 0); fR = 5f * p; aL = new Vector3(-30, 0, 10);
@@ -523,7 +527,7 @@ namespace HalcyonNoir
             torso.localRotation = Quaternion.Slerp(torso.localRotation, Quaternion.Euler(torsoRot), k);
             if (visor != null)
             {
-                float flick = st == St.Overheat || st == St.Dead ? (Mathf.PerlinNoise(Time.time * 12, 0) > 0.5f ? 0.3f : 1.5f) : 4f + Heat01 * 2f;
+                float flick = st == St.Overheat || st == St.Dead ? (Mathf.PerlinNoise(Time.time * 12, 0) > 0.5f ? 0.3f : 1.5f) : 4f + Heat01 * 2f + VisorBoost;
                 visor.sharedMaterial = Mats.Glow(st == St.Overheat ? new Color(1f, 0.3f, 0.2f) : new Color(1f, 0.7f, 0.3f), Mathf.Round(flick * 2) / 2);
             }
         }

@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.0.07
+- **The finishing move is a visor beam now.** When the crab is staggered and you press F, the Graven plants its
+  feet and throws its arms back. The visor heats from amber to white, and it burns a beam straight through the
+  crab's lantern core.
+- **Fixed: heads poking through the car roof.** The cabin is taller and the bench seat sits lower, so Vane's hat
+  and Wren's hair stay inside the car in the opening drive.
+- **Fixed: Vane's coat hanging under the car.** When he sits, the back and side panels of his coat bunch up on the
+  seat instead of hanging through the floor. Wren's coat does the same.
+
 ## v0.0.06
 - **New opening: the drive in.**
   - The game starts on the causeway into Halcyon at night. Vane is at the wheel of his long black car, in the

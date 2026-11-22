@@ -7,7 +7,7 @@ namespace HalcyonNoir
 {
     public static class Game
     {
-        public const string Version = "v0.0.06";
+        public const string Version = "v0.0.07";
         public static bool Paused;
     }
 
@@ -51,6 +51,7 @@ namespace HalcyonNoir
         public static bool SkipToFight => Index("-hn-fight") >= 0;
         public static bool Auto => Index("-hn-auto") >= 0;
         public static bool CallIn => Index("-hn-callin") >= 0;
+        public static bool Finish => Index("-hn-finish") >= 0;   // with -hn-fight: break the crab after a few seconds and play the finisher
         public static string WavDir => Value("-hn-wav");   // dump the synthesized music and rain as .wav files   // jump straight to calling the Graven (auto-advances)
         public static string ShotDir => Value("-hn-shots");
         public static float ShotEvery => float.TryParse(Value("-hn-shot-every"), System.Globalization.NumberStyles.Float,
@@ -817,7 +818,8 @@ namespace HalcyonNoir
                     if (!hintCleared && Time.time - fightStart > 14) { ui.HintLine = null; hintCleared = true; }
                     if (restartRequested) { restartRequested = false; ResetFight(); fightStart = Time.time; hintCleared = true; ui.HintLine = null; }
                     if (graven.Dead) { lost = true; break; }
-                    if (!Game.Paused && boss.CanFinish && In.Finisher) break;
+                    if (DevArgs.Finish && !boss.Staggered && Time.time - fightStart > 4) boss.DevBreak();
+                    if (!Game.Paused && boss.CanFinish && (In.Finisher || DevArgs.Finish && Time.time - fightStart > 5)) break;
                     yield return null;
                 }
                 ui.HintLine = null;
@@ -843,6 +845,8 @@ namespace HalcyonNoir
             }
         }
 
+        // The finishing move: the Graven plants its feet, the visor burns white-hot, and it opens up a beam
+        // straight through the crab's lantern core.
         IEnumerator Finisher()
         {
             busy = true;
@@ -853,30 +857,84 @@ namespace HalcyonNoir
             mechCam.enabled = false;
             orbit.enabled = true;
             var gp = graven.transform.position;
-            var side = Vector3.Cross(Vector3.up, (boss.transform.position - gp).normalized);
-            Shot(gp + side * 30 + Vector3.up * 8 + (boss.transform.position - gp) * 0.5f, Vector3.Lerp(gp, boss.transform.position, 0.5f) + Vector3.up * 10);
-            cam.transform.position = orbit.CinePos;
-            yield return Letterbox(1, 0.3f);
-            Sound.I?.Play("charge", 1f, 0.5f);
+            var toBoss = boss.transform.position - gp; toBoss.y = 0;
+            graven.transform.rotation = Quaternion.LookRotation(toBoss.normalized);
+            var fwd = toBoss.normalized;
+            var side = Vector3.Cross(Vector3.up, fwd);
+            ui.ClearToasts();
             Sound.I?.MusicVolume(0f);
-            Fx.I?.Steam(graven.FistPos(false), 40, 3);
-            yield return Wait(0.9f);
-            graven.FinisherPunch();
-            Sound.I?.Play("whoosh", 1f, 0.4f);
-            yield return Wait(0.18f);
-            boss.Die();
-            Fx.I?.Flash(new Color(1f, 0.95f, 0.85f, 0.9f), 0.6f);
-            Fx.I?.Shake(4f, 1.5f);
-            Fx.I?.Sparks(boss.CorePos, new Color(0.6f, 1f, 1f), 150, 6);
-            Fx.I?.Debris(boss.CorePos, 60, 8);
-            Fx.I?.Steam(boss.CorePos, 60, 8);
-            Sound.I?.Play("impact", 1f, 0.5f);
-            Sound.I?.Play("clang", 1f, 0.4f);
-            Fx.I.BaseTimeScale = 0.15f;
-            yield return Wait(1.2f);
+
+            // 1. close on the head: the visor heats from amber to white
+            var vp = graven.VisorPos;
+            Shot(vp + fwd * 11 + side * 4 - Vector3.up * 2.5f, vp);
+            cam.transform.position = orbit.CinePos;
+            cam.transform.LookAt(orbit.CineLook);
+            yield return Letterbox(1, 0.3f);
+            Sound.I?.Play("charge", 1f, 0.45f);
+            for (float t = 0; t < 1.6f; t += Time.deltaTime)
+            {
+                graven.VisorBoost = Mathf.Lerp(0, 12, t / 1.6f);
+                if (Random.value < 0.4f) Fx.I?.Sparks(graven.VisorPos, new Color(1f, 0.8f, 0.45f), 3, 1.2f);
+                Fx.I?.Shake(0.15f * t, 0.1f);
+                yield return null;
+            }
+            Fx.I?.Steam(graven.ExhaustPos(-1), 30, 3);
+            Fx.I?.Steam(graven.ExhaustPos(1), 30, 3);
+
+            // 2. wide from the side as it fires
+            var core = boss.CorePos;
+            var mid = Vector3.Lerp(gp, boss.transform.position, 0.5f);
+            float span = toBoss.magnitude;
+            if (side.z < 0) side = -side;   // look from the open water side, not into the quay
+            Shot(mid + side * (span * 0.8f + 12) - fwd * span * 0.15f + Vector3.up * 9, mid + Vector3.up * 8);
+            cam.transform.position = orbit.CinePos;
+            cam.transform.LookAt(orbit.CineLook);
+            var beamMat = Mats.GlowInstance(new Color(1f, 0.82f, 0.55f), 8f);
+            var beam = Build.Part(null, PrimitiveType.Cylinder, Vector3.zero, Vector3.one, beamMat, null, false, "VisorBeam");
+            beam.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            var coreMat = Mats.GlowInstance(new Color(1f, 0.95f, 0.85f), 12f);
+            var beamCore = Build.Part(beam.transform, PrimitiveType.Cylinder, Vector3.zero, new Vector3(0.4f, 1f, 0.4f), coreMat, null, false, "BeamCore");
+            beamCore.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            var hitLight = Build.PointLight(null, core, new Color(1f, 0.75f, 0.45f), 45f, 10f);
+            var eyeLight = Build.PointLight(null, graven.VisorPos, new Color(1f, 0.75f, 0.45f), 30f, 8f);
+            Sound.I?.Play("whoosh", 1f, 0.3f);
+            Sound.I?.Play("roar", 0.9f, 1.6f);
+            Fx.I?.Flash(new Color(1f, 0.85f, 0.6f, 0.5f), 0.25f);
+            bool killed = false;
+            for (float t = 0; t < 2.2f; t += Time.deltaTime)
+            {
+                var a = graven.VisorPos; var b = boss.CorePos;
+                float grow = Mathf.Clamp01(t / 0.15f) * Mathf.Clamp01((2.2f - t) / 0.35f);
+                float w = (1.6f + Mathf.Sin(Time.time * 60) * 0.25f) * grow;
+                beam.transform.position = (a + b) * 0.5f;
+                beam.transform.rotation = Quaternion.FromToRotation(Vector3.up, b - a);
+                beam.transform.localScale = new Vector3(w, (b - a).magnitude * 0.5f, w);
+                hitLight.transform.position = b; hitLight.intensity = 10 * grow;
+                eyeLight.transform.position = a; eyeLight.intensity = 8 * grow;
+                Fx.I?.Sparks(b, new Color(1f, 0.85f, 0.5f), 6, 2.5f);
+                if (Random.value < 0.3f) Fx.I?.Steam(b, 4, 3);
+                Fx.I?.Shake(0.5f * grow, 0.1f);
+                if (!killed && t > 1.1f)
+                {
+                    killed = true;
+                    boss.Die();
+                    Fx.I?.Flash(new Color(1f, 0.95f, 0.85f, 0.9f), 0.6f);
+                    Fx.I?.Shake(4f, 1.5f);
+                    Fx.I?.Sparks(b, new Color(0.6f, 1f, 1f), 150, 6);
+                    Fx.I?.Debris(b, 60, 8);
+                    Fx.I?.Steam(b, 60, 8);
+                    Sound.I?.Play("impact", 1f, 0.5f);
+                    Sound.I?.Play("clang", 1f, 0.4f);
+                    Fx.I.BaseTimeScale = 0.2f;
+                }
+                if (killed && Fx.I.BaseTimeScale < 1 && t > 1.35f) Fx.I.BaseTimeScale = 1;
+                yield return null;
+            }
             Fx.I.BaseTimeScale = 1;
-            Sound.I?.Play("roar", 0.8f, 0.4f);
-            yield return Wait(2f);
+            Destroy(beam); Destroy(hitLight.gameObject); Destroy(eyeLight.gameObject);
+            graven.VisorBoost = 0;
+            Fx.I?.Steam(graven.VisorPos, 20, 2);
+            yield return Wait(1.6f);
             graven.EndFinisher();
             yield return Fade(1, 1.5f);
             yield return Epilogue();

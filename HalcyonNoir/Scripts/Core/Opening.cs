@@ -165,13 +165,13 @@ namespace HalcyonNoir
             player.Scripted = true;
             player.Cc.enabled = false;
             player.transform.SetParent(vaneCar.transform, false);
-            player.transform.localPosition = new Vector3(-0.42f, -0.48f, -0.42f);
+            player.transform.localPosition = new Vector3(-0.42f, -0.6f, -0.42f);
             player.transform.localRotation = Quaternion.identity;
             var f = player.Figure;
             f.Seated = true;
             HandsOnWheel(f);
             wren = MakeWren(vaneCar.transform);
-            wren.transform.localPosition = new Vector3(0.42f, -0.33f, -0.42f);
+            wren.transform.localPosition = new Vector3(0.42f, -0.47f, -0.42f);
             wren.Seated = true;
             wren.Idle = Figure.Stance.Plain;
 

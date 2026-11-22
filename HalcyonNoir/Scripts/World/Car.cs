@@ -9,8 +9,8 @@ namespace HalcyonNoir
     {
         public Transform[] Wheels;
         public Transform DriverDoor;
-        public Vector3 DriverSeat => transform.TransformPoint(new Vector3(-0.42f, -0.48f, -0.42f));   // where a seated Figure's root goes
-        public Vector3 PassengerSeat => transform.TransformPoint(new Vector3(0.42f, -0.48f, -0.42f));
+        public Vector3 DriverSeat => transform.TransformPoint(new Vector3(-0.42f, -0.6f, -0.42f));   // where a seated Figure's root goes
+        public Vector3 PassengerSeat => transform.TransformPoint(new Vector3(0.42f, -0.6f, -0.42f));
         public Vector3 DriverDoorStep => transform.TransformPoint(new Vector3(-1.45f, 0, -0.35f));
         public Light[] Headlights;
         float spin;
@@ -51,22 +51,22 @@ namespace HalcyonNoir
                 P(PrimitiveType.Cube, new Vector3(sx * 0.95f, 0.34f, -0.15f), new Vector3(0.12f, 0.06f, 1.7f), chrome);                  // running board
             }
             // cabin: pillars, a low roof, dark glass at the back and sides; open at the front so we can see in
-            P(PrimitiveType.Cube, new Vector3(0, 1.56f, -0.55f), new Vector3(1.66f, 0.07f, 1.9f), paint);                                // roof
-            P(PrimitiveType.Cube, new Vector3(0, 1.22f, -1.55f), new Vector3(1.62f, 0.62f, 0.08f), glass, new Vector3(-30, 0, 0));       // rear window
+            P(PrimitiveType.Cube, new Vector3(0, 1.74f, -0.55f), new Vector3(1.66f, 0.07f, 1.9f), paint);                                // roof
+            P(PrimitiveType.Cube, new Vector3(0, 1.3f, -1.6f), new Vector3(1.62f, 0.86f, 0.08f), glass, new Vector3(-30, 0, 0));       // rear window
             for (int sx = -1; sx <= 1; sx += 2)
             {
-                P(PrimitiveType.Cube, new Vector3(sx * 0.8f, 1.19f, 0.36f), new Vector3(0.06f, 0.76f, 0.06f), paint, new Vector3(-28, 0, 0)); // A pillar
-                P(PrimitiveType.Cube, new Vector3(sx * 0.82f, 1.2f, -0.5f), new Vector3(0.06f, 0.7f, 0.07f), paint);                       // B pillar
-                P(PrimitiveType.Cube, new Vector3(sx * 0.82f, 1.18f, -1.1f), new Vector3(0.03f, 0.6f, 0.95f), glass);                        // back side glass
+                P(PrimitiveType.Cube, new Vector3(sx * 0.8f, 1.28f, 0.31f), new Vector3(0.06f, 0.96f, 0.06f), paint, new Vector3(-28, 0, 0)); // A pillar
+                P(PrimitiveType.Cube, new Vector3(sx * 0.82f, 1.29f, -0.5f), new Vector3(0.06f, 0.9f, 0.07f), paint);                       // B pillar
+                P(PrimitiveType.Cube, new Vector3(sx * 0.82f, 1.27f, -1.1f), new Vector3(0.03f, 0.8f, 0.95f), glass);                        // back side glass
             }
-            P(PrimitiveType.Cube, new Vector3(0, 1.19f, 0.38f), new Vector3(0.05f, 0.74f, 0.04f), chrome, new Vector3(-28, 0, 0));           // windshield split
+            P(PrimitiveType.Cube, new Vector3(0, 1.28f, 0.33f), new Vector3(0.05f, 0.94f, 0.04f), chrome, new Vector3(-28, 0, 0));           // windshield split
             // the driver's door, hinged at the front so it can swing open
             DriverDoor = Build.Pivot(t, "DriverDoor", new Vector3(-0.96f, 0, 0.32f));
             Build.Part(DriverDoor, PrimitiveType.Cube, new Vector3(0, 0.66f, -0.6f), new Vector3(0.06f, 0.5f, 1.15f), paint);
             Build.Part(DriverDoor, PrimitiveType.Cube, new Vector3(-0.04f, 0.78f, -1.05f), new Vector3(0.03f, 0.03f, 0.14f), chrome);
 
             // interior: bench seat, dash, wheel
-            P(PrimitiveType.Cube, new Vector3(0, 0.45f, -0.45f), new Vector3(1.6f, 0.18f, 0.6f), leather);
+            P(PrimitiveType.Cube, new Vector3(0, 0.32f, -0.45f), new Vector3(1.6f, 0.18f, 0.6f), leather);
             P(PrimitiveType.Cube, new Vector3(0, 0.85f, -0.78f), new Vector3(1.6f, 0.7f, 0.14f), leather, new Vector3(-12, 0, 0));
             P(PrimitiveType.Cube, new Vector3(0, 0.95f, 0.42f), new Vector3(1.6f, 0.22f, 0.25f), dash);
             P(PrimitiveType.Cube, new Vector3(0, 1.0f, 0.3f), new Vector3(0.5f, 0.12f, 0.02f), Mats.Glow(new Color(0.9f, 0.6f, 0.3f), 0.8f)); // gauges
