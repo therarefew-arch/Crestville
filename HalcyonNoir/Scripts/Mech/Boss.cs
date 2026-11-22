@@ -198,7 +198,7 @@ namespace HalcyonNoir
             var a = City.Arena;
             var rel = Flat(transform.position - a);
             if (rel.magnitude > City.ArenaRadius - 6) rel = rel.normalized * (City.ArenaRadius - 6);
-            rel.x = Mathf.Min(rel.x, City.WaterEdgeX + 8);
+            rel.x = Mathf.Clamp(rel.x, City.LandEdgeX + 12, City.WaterEdgeX + 8);
             transform.position = new Vector3(a.x + rel.x, transform.position.y, a.z + rel.z);
         }
 

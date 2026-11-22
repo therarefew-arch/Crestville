@@ -14,13 +14,58 @@ namespace HalcyonNoir
 
         static Vector3 Flat(Vector3 v) { v.y = 0; return v; }
 
-        IEnumerator CallGraven(Vector3 p)
+        // The Tidewarden, while Vane calls the Graven: it doesn't wait. It comes for the pier, takes the end
+        // off it, gets shoved back into deep water by the Graven, and comes again while he climbs aboard.
+        Vector3 crabGoal, crabFace;
+        float crabSpeed;
+        bool crabOn;
+
+        IEnumerator CrabDrive(BossController crab)
+        {
+            float step = 0, wob = 0;
+            while (crabOn && crab != null)
+            {
+                float dt = Time.deltaTime;
+                var pos = crab.transform.position;
+                var to = Flat(crabGoal - pos);
+                float d = to.magnitude;
+                wob += dt;
+                if (d > 0.3f)
+                {
+                    var mv = to.normalized * Mathf.Min(d, crabSpeed * dt);
+                    mv += Vector3.Cross(Vector3.up, to.normalized) * Mathf.Sin(wob * 1.3f) * 1.5f * dt;   // that crab sidestep
+                    crab.transform.position = pos + mv;
+                    step -= dt * crabSpeed;
+                    if (step <= 0)
+                    {
+                        step = 3.2f;
+                        Sound.I?.Play("bigstep", 0.55f, 0.42f);
+                        Fx.I?.Shake(0.25f, 0.3f);
+                        Fx.I?.Splash(crab.transform.position + Random.insideUnitSphere.normalized * 9f + Vector3.up * 0.5f, 14, 3);
+                    }
+                }
+                var face = Flat(crabFace - crab.transform.position);
+                if (face.sqrMagnitude > 1) crab.transform.rotation = Quaternion.RotateTowards(crab.transform.rotation, Quaternion.LookRotation(face), 40 * dt);
+                yield return null;
+            }
+        }
+
+        IEnumerator CallGraven(Vector3 p, BossController crab = null)
         {
             var f = player.Figure;
             var pierHand = new Vector3(60f, 0.05f, 2.3f);          // where the hand comes down: the pier's north edge, near the end
             var g0 = new Vector3(70f, -3f, 19f);                    // roughly where it stands in the water
             var toG = Flat(g0 - p).normalized;
             var side = Vector3.Cross(Vector3.up, toG);
+
+            // it's coming for the pier while he calls
+            var crabFloor = City.Arena.y;
+            if (crab != null)
+            {
+                crabOn = true;
+                crabGoal = new Vector3(83f, crabFloor, -6f); crabFace = new Vector3(62f, 0, 0); crabSpeed = 4.5f;
+                StartCoroutine(CrabDrive(crab));
+            }
 
             // ----- 1. the call -----
             player.FaceTowards(p + toG * 10);
@@ -50,6 +95,16 @@ namespace HalcyonNoir
             Fx.I?.Shake(0.6f, 0.8f);
             yield return Wait(0.8f);
 
+            // ----- 1b. the Tidewarden takes the end off the pier -----
+            if (crab != null)
+            {
+                Shot(new Vector3(36f, 4.2f, -16f), Vector3.Lerp(p, crab.transform.position, 0.55f) + Vector3.up * 5f);
+                orbit.CineSpeed = 3f;
+                for (float t = 0; t < 2.5f && Flat(crab.transform.position - crabGoal).magnitude > 1.5f; t += Time.unscaledDeltaTime) yield return null;
+                yield return CrabSmash(crab, p);
+                crabGoal = crab.transform.position + new Vector3(3f, 0, -2f); crabSpeed = 2f;
+            }
+
             // ----- 2. it rises -----
             var gv = GravenController.Make(g0, Quaternion.LookRotation(Flat(pierHand - g0)));
             gv.Scripted = true;
@@ -74,8 +129,21 @@ namespace HalcyonNoir
             orbit.CineSpeed = 1.5f;
             bool risen = false;
             StartCoroutine(RiseGraven(gv, gFar, 6.5f, () => risen = true));
+            if (crab != null) { crabFace = gFar; crabGoal = crab.transform.position + Flat(crab.transform.position - gFar).normalized * 6f; crabSpeed = 2.5f; }
             yield return Narrate("It came up out of the harbor the way it always does. Slowly. Like it had been waiting just under the surface for me to ask.");
             while (!risen) yield return null;
+
+            // ----- 2b. they know each other. Then the Tidewarden comes on, and the Graven puts it back in the deep water -----
+            if (crab != null)
+            {
+                var gp0 = gv.transform.position;
+                Shot(new Vector3(38f, 5f, -26f), Vector3.Lerp(gp0, crab.transform.position, 0.5f) + Vector3.up * 14f);
+                yield return Narrate("The Tidewarden stopped. Its lantern dimmed and brightened, slow, like it was trying to place a face.",
+                                     "For a moment it just looked at the Graven, the way a dog looks at someone who left a long time ago.",
+                                     "Then it remembered what it was for.");
+                yield return GravenShove(gv, crab);
+                gv.transform.rotation = Quaternion.LookRotation(Flat(pierHand - gFar));
+            }
 
             // ----- 3. it wakes: the poster shot -----
             // Low on the deck, a few steps behind Vane, wide lens tilted up: him in the foreground at the bottom of
@@ -115,6 +183,7 @@ namespace HalcyonNoir
             while (!waded) yield return null;
 
             // ----- 4. it kneels and puts its hand down -----
+            if (crab != null) { crabGoal = new Vector3(103f, crabFloor, -9f); crabFace = gFinal; crabSpeed = 3f; Sound.I?.Play("roar", 0.6f, 0.75f); }
             Shot(pierHand - toG * 22f + side * 14f + Vector3.up * 6f, Vector3.Lerp(pierHand, gFinal + Vector3.up * 14f, 0.5f));
             Sound.I?.Play("bigstep", 1f, 0.55f);
             for (float t = 0; t < 1; t += Time.unscaledDeltaTime / 3.2f)
@@ -135,10 +204,11 @@ namespace HalcyonNoir
             var palm = gv.PalmTop;
             var approach = palm + Flat(p - palm).normalized * 1.1f; approach.y = 0;
             Shot(approach - side * 5.5f + Vector3.up * 1.6f - toG * 2.5f, palm + Vector3.up * 1f);
-            yield return WalkVane(approach, 2.6f);
+            yield return WalkVane(approach, crab != null ? 4.6f : 2.6f);   // it's coming back: he runs
             yield return HopVane(palm, 0.55f, 1.0f);
 
             // ----- 6. the hand lifts him to the chest; the hatch drops open -----
+            if (crab != null) { crabGoal = new Vector3(97f, crabFloor, -6f); crabSpeed = 5.5f; }
             orbit.CineSpeed = 4f;
             bool hatchSound = false;
             for (float t = 0; t < 1; t += Time.unscaledDeltaTime / 3.6f)
@@ -174,15 +244,149 @@ namespace HalcyonNoir
             Fx.I?.Steam(gv.ExhaustPos(-1), 40, 3f);
             Fx.I?.Steam(gv.ExhaustPos(1), 40, 3f);
             orbit.CineSpeed = 2.5f;
-            Shot(new Vector3(32f, 3f, -20f), gFinal + Vector3.up * 18f);
+            Shot(new Vector3(32f, 3f, -20f), gFinal + Vector3.up * 18f + (crab != null ? Vector3.right * 8f : Vector3.zero));
+            if (crab != null) { Sound.I?.Play("roar", 1f, 0.6f); Fx.I?.Shake(1.2f, 1f); }
+            gravenStood = gFinal;
             yield return Narrate("The hatch sealed behind me, and the rain went quiet.");
 
             // ----- 8. the cockpit wakes up -----
             yield return Fade(1, 0.6f);
             Destroy(gv.gameObject);
+            crabOn = false;
             yield return CockpitLink();
             player.Scripted = false;
             player.Cc.enabled = true;
+        }
+
+        // The Tidewarden rears back and comes down on the end of the pier. Vane is thrown back off his feet.
+        IEnumerator CrabSmash(BossController crab, Vector3 p)
+        {
+            crabSpeed = 0;
+            float floor = City.Arena.y;
+            var start = crab.transform.position;
+            var pierEnd = new Vector3(63f, floor, 0);
+            var toPier = Flat(pierEnd - start).normalized;
+            var face = Quaternion.LookRotation(toPier);
+            Sound.I?.Play("roar", 1f, 0.7f);
+            for (float t = 0; t < 0.7f; t += Time.unscaledDeltaTime)
+            {
+                float k = Mathf.SmoothStep(0, 1, t / 0.7f);
+                crab.transform.SetPositionAndRotation(start - toPier * 2f * k, face * Quaternion.Euler(-10 * k, 0, 0));
+                yield return null;
+            }
+            var back = crab.transform.position;
+            var hit = start + toPier * 5f;
+            for (float t = 0; t < 0.22f; t += Time.unscaledDeltaTime)
+            {
+                float k = t / 0.22f;
+                crab.transform.SetPositionAndRotation(Vector3.Lerp(back, hit, k * k), face * Quaternion.Euler(Mathf.Lerp(-10, 12, k), 0, 0));
+                yield return null;
+            }
+            Sound.I?.Play("impact", 1f, 0.55f);
+            Sound.I?.Play("clang", 0.9f, 0.45f);
+            Fx.I?.Shake(1.8f, 1f);
+            Fx.I?.Debris(new Vector3(63f, 0.4f, 0), 45, 3f);
+            Fx.I?.Splash(new Vector3(64f, -1.5f, 0), 70, 6f);
+            StartCoroutine(BreakPierEnd());
+            StartCoroutine(StaggerVane(p, toPier));
+            for (float t = 0; t < 0.6f; t += Time.unscaledDeltaTime)
+            {
+                crab.transform.rotation = Quaternion.Slerp(crab.transform.rotation, face, Time.unscaledDeltaTime * 4);
+                yield return null;
+            }
+            crabGoal = crab.transform.position; crabFace = p;
+            yield return Narrate("It went for the end of the pier like it knew who was standing on it.");
+        }
+
+        IEnumerator BreakPierEnd()
+        {
+            if (city.PierEnd == null) yield break;
+            var pivot = new Vector3(61.5f, -0.3f, 0);
+            float done = 0;
+            for (float t = 0; t < 0.55f; t += Time.unscaledDeltaTime)
+            {
+                float k = Mathf.SmoothStep(0, 1, t / 0.55f);
+                float ang = -32f * k;
+                city.PierEnd.RotateAround(pivot, Vector3.forward, ang - done);
+                done = ang;
+                yield return null;
+            }
+            city.PierEnd.position += Vector3.down * 0.9f;
+            Fx.I?.Splash(new Vector3(63.5f, -2f, 0), 40, 3f);
+        }
+
+        IEnumerator StaggerVane(Vector3 p, Vector3 away)
+        {
+            var f = player.Figure;
+            var cc = player.Cc; cc.enabled = false;
+            var from = player.transform.position;
+            var to = from - Flat(away).normalized * 1.3f; to.y = from.y;
+            var armL = f.ArmLPose; var foreL = f.ForeLBend;
+            f.BodyPose = new Vector3(-22, 0, 6);
+            f.ArmRPose = new Vector3(-70, 0, -40); f.ForeRBend = 40;
+            for (float t = 0; t < 0.35f; t += Time.unscaledDeltaTime)
+            {
+                player.transform.position = Vector3.Lerp(from, to, Mathf.Sin(t / 0.35f * Mathf.PI * 0.5f));
+                yield return null;
+            }
+            Sound.I?.Play("step", 0.5f, 0.7f);
+            yield return Wait(0.5f);
+            f.BodyPose = null; f.ArmRPose = null; f.ForeRBend = -1;
+            cc.enabled = true;
+        }
+
+        // The Tidewarden comes at the Graven; the Graven meets it with both hands and drives it back out
+        // into the deep water.
+        IEnumerator GravenShove(GravenController gv, BossController crab)
+        {
+            crabSpeed = 0;
+            float floor = City.Arena.y;
+            var gp = gv.transform.position;
+            var toC = Flat(crab.transform.position - gp).normalized;
+            var across = Vector3.Cross(Vector3.up, toC);
+            var mid = Vector3.Lerp(gp, crab.transform.position, 0.5f);
+            Shot(mid + across * 58f + Vector3.up * 10f - toC * 4f, mid + Vector3.up * 13f);
+            orbit.CineSpeed = 4f;
+            var gFrom = gv.transform.rotation;
+            var gFace = Quaternion.LookRotation(toC);
+            var cStart = crab.transform.position;
+            var cHit = gp + toC * 16f; cHit.y = floor;
+            Sound.I?.Play("roar", 1f, 0.65f);
+            for (float t = 0; t < 1.1f; t += Time.unscaledDeltaTime)
+            {
+                float k = Mathf.SmoothStep(0, 1, t / 1.1f);
+                gv.transform.rotation = Quaternion.Slerp(gFrom, gFace, k);
+                gv.ScriptShove(0.25f * k);
+                crab.transform.position = Vector3.Lerp(cStart, cHit, k * k);
+                crab.transform.rotation = Quaternion.Slerp(crab.transform.rotation, Quaternion.LookRotation(-toC), Time.unscaledDeltaTime * 6);
+                if (Random.value < 0.3f) Fx.I?.Splash(crab.transform.position + Random.insideUnitSphere * 8f, 10, 3);
+                yield return null;
+            }
+            for (float t = 0; t < 0.18f; t += Time.unscaledDeltaTime) { gv.ScriptShove(Mathf.Lerp(0.25f, 1f, t / 0.18f)); yield return null; }
+            gv.ScriptShove(1);
+            var contact = gp + toC * 9f + Vector3.up * 12f;
+            Sound.I?.Play("impact", 1f, 0.45f);
+            Sound.I?.Play("clang", 1f, 0.35f);
+            Fx.I?.Shake(2.4f, 1.1f);
+            Fx.I?.Sparks(contact, new Color(1f, 0.75f, 0.4f), 90, 3);
+            Fx.I?.Steam(contact, 20, 4);
+            Fx.I?.HitStop(0.12f);
+            // out into the deep water, east, away from the pier
+            var push = (toC + Vector3.right * 1.4f).normalized; push.y = 0; push.Normalize();
+            var cEnd = cHit + push * 30f; cEnd.y = floor;
+            var tilt = Quaternion.LookRotation(-push);
+            for (float t = 0; t < 1.6f; t += Time.unscaledDeltaTime)
+            {
+                float k = 1 - Mathf.Pow(1 - t / 1.6f, 3);
+                crab.transform.position = Vector3.Lerp(cHit, cEnd, k);
+                crab.transform.rotation = Quaternion.Slerp(crab.transform.rotation, tilt * Quaternion.Euler(-14 * (1 - k), 0, 10 * (1 - k)), Time.unscaledDeltaTime * 5);
+                gv.ScriptShove(1 - Mathf.Clamp01((t - 0.5f) / 1.1f));
+                if (Random.value < 0.6f) Fx.I?.Splash(crab.transform.position + new Vector3(Random.Range(-10f, 10f), 0.5f, Random.Range(-8f, 8f)), 16, 4);
+                yield return null;
+            }
+            gv.ScriptPose(0, 0, 0, 0);
+            crabGoal = cEnd; crabFace = gp; crabSpeed = 2f;
+            orbit.CineSpeed = 2.5f;
         }
 
         IEnumerator RiseGraven(GravenController gv, Vector3 to, float dur, System.Action done)
@@ -268,6 +472,20 @@ namespace HalcyonNoir
             Sound.I?.Play("step", 0.45f, 0.7f);
         }
 
+        // A prompt that waits for [C]. The test runs press it for themselves after a moment.
+        IEnumerator WaitForKey(string hint, float autoAfter)
+        {
+            ui.HintLine = hint;
+            yield return null;
+            for (float t = 0; ; t += Time.unscaledDeltaTime)
+            {
+                if (!Game.Paused && In.Smoke) break;
+                if ((DevArgs.Auto || DevArgs.CallIn || DevArgs.SkipToFight) && t > autoAfter) break;
+                yield return null;
+            }
+            ui.HintLine = null;
+        }
+
         IEnumerator CockpitLink()
         {
             if (cockpit == null) cockpit = new Cockpit();
@@ -295,6 +513,20 @@ namespace HalcyonNoir
             cam.transform.rotation = Quaternion.LookRotation(orbit.CineLook - orbit.CinePos);
             yield return Fade(0, 1.0f);
             yield return Narrate("Inside it was dark, and warm. The seat was warm. It always is. Like somebody had only just got up from it.");
+
+            // first, a cigarette. In the dark, the lighter is the only light there is.
+            Shot(o + new Vector3(0.62f, 1.5f, 0.8f), o + new Vector3(0, 1.42f, -0.2f));
+            smoke.PutOut();
+            smoke.InMouth = true;
+            yield return WaitForKey("[C]  Light up", 1.2f);
+            yield return smoke.LightUpCo();
+            f.ArmLPose = new Vector3(-50, 0, 4); f.ForeLBend = 70;
+            f.ArmRPose = new Vector3(-55, 0, -4); f.ForeRBend = 60;
+            Shot(o + new Vector3(0.45f, 1.55f, 0.62f), o + new Vector3(0, 1.45f, -0.2f));
+            yield return WaitForKey("[C]  Take a drag", 1.0f);
+            yield return smoke.DragCo();
+            yield return Wait(0.8f);
+            yield return Narrate("The smoke went up into the dark and hung there. Somewhere under my feet, something very large was waiting for me to be ready.");
 
             // the band goes into the socket
             Shot(o + new Vector3(-1.35f, 1.35f, 0.75f), o + new Vector3(-0.4f, 0.85f, -0.05f));
@@ -336,6 +568,7 @@ namespace HalcyonNoir
             ui.LinkText = $"<b>LINK ESTABLISHED</b>\n<size=22>E. VANE  —  THE GRAVEN</size>\n<size=22>SYNC  {sync}%{(Extras > 0 ? $"   ·   {Extras} lead{(Extras > 1 ? "s" : "")} off the record" : "")}</size>";
             for (float t = 0; t < 1; t += Time.unscaledDeltaTime / 0.5f) { ui.LinkAlpha = t; yield return null; }
             ui.LinkAlpha = 1;
+            smoke.Drag();
             yield return Narrate("The visor came up amber, and the harbor came up with it.");
             yield return Wait(0.6f);
             for (float t = 1; t > 0; t -= Time.unscaledDeltaTime / 0.5f) { ui.LinkAlpha = t; yield return null; }

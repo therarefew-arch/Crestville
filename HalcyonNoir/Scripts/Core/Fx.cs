@@ -86,6 +86,54 @@ namespace HalcyonNoir
         public void Splash(Vector3 pos, int count = 40, float radius = 4f) => Emit(splash, pos, count, null, radius);
         public void Embers(Vector3 pos, int count = 20, float radius = 2f) => Emit(embers, pos, count, null, radius);
 
+        // Cigarette smoke: small soft puffs that drift up, swell and curl. dir is the exhale direction.
+        ParticleSystem smoke;
+        public void Smoke(Vector3 pos, Vector3 vel, int count = 6, float size = 1f)
+        {
+            if (smoke == null) smoke = MakeSmoke();
+            for (int i = 0; i < count; i++)
+            {
+                var p = new ParticleSystem.EmitParams
+                {
+                    position = pos + Random.insideUnitSphere * 0.02f,
+                    velocity = vel * Random.Range(0.6f, 1.1f) + Random.insideUnitSphere * 0.08f,
+                    startSize = Random.Range(0.06f, 0.14f) * size,
+                    startLifetime = Random.Range(2.2f, 3.8f),
+                };
+                smoke.Emit(p, 1);
+            }
+        }
+
+        ParticleSystem MakeSmoke()
+        {
+            var go = new GameObject("CigSmoke");
+            go.transform.SetParent(transform, false);
+            var ps = go.AddComponent<ParticleSystem>();
+            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            var main = ps.main;
+            main.playOnAwake = false; main.loop = false;
+            main.startColor = new Color(0.75f, 0.76f, 0.8f, 0.55f);
+            main.gravityModifier = -0.035f;
+            main.maxParticles = 2500;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.startRotation = new ParticleSystem.MinMaxCurve(0, Mathf.PI * 2);
+            var em = ps.emission; em.rateOverTime = 0;
+            var shape = ps.shape; shape.enabled = false;
+            var sz = ps.sizeOverLifetime; sz.enabled = true;
+            sz.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.EaseInOut(0, 0.6f, 1, 5f));
+            var vel = ps.limitVelocityOverLifetime; vel.enabled = true; vel.limit = 0.35f; vel.dampen = 0.08f;
+            var noise = ps.noise; noise.enabled = true; noise.strength = 0.18f; noise.frequency = 0.7f; noise.scrollSpeed = 0.3f;
+            var rot = ps.rotationOverLifetime; rot.enabled = true; rot.z = new ParticleSystem.MinMaxCurve(-0.6f, 0.6f);
+            var col = ps.colorOverLifetime; col.enabled = true;
+            var grad = new Gradient();
+            grad.SetKeys(new[] { new GradientColorKey(Color.white, 0), new GradientColorKey(Color.white, 1) },
+                new[] { new GradientAlphaKey(0, 0), new GradientAlphaKey(0.7f, 0.08f), new GradientAlphaKey(0.35f, 0.5f), new GradientAlphaKey(0, 1) });
+            col.color = grad;
+            var r = go.GetComponent<ParticleSystemRenderer>();
+            r.sharedMaterial = Mats.Glow(new Color(0.5f, 0.5f, 0.55f), 0.35f, true);
+            return ps;
+        }
+
         public void Shake(float amp, float dur)
         {
             if (amp >= shakeAmp * Mathf.Clamp01(1 - shakeTime / Mathf.Max(shakeDur, 0.01f)))

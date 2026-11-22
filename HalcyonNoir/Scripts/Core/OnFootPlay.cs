@@ -23,6 +23,7 @@ namespace HalcyonNoir
             f.Speed01 = 0;
             player.transform.localScale = Vector3.one;
             player.EndCombat();
+            smoke?.PutOut();
         }
 
         // ---------------- the ambush ----------------
@@ -56,6 +57,7 @@ namespace HalcyonNoir
             yield return Say("Trust man", "It's always raining. The Trust would like you to stop asking about the harbor.");
             yield return Say("Vane", "The Trust can write me a letter.");
             yield return Say("Trust man", "This is the letter.");
+            if (smoke.Lit) yield return smoke.FlickCo();
             EndShot();
             yield return Letterbox(0, 0.4f);
 
@@ -93,6 +95,8 @@ namespace HalcyonNoir
             {
                 Shot(leader.transform.position + new Vector3(-2.2f, 1.6f, 1.8f), leader.transform.position + Vector3.up * 0.4f);
                 player.EndCombat();
+            smoke?.PutOut();
+                smoke.LightUp();
                 yield return Narrate("They'd be back. Men like that always are. But not tonight.",
                                      "The big one had a card in his breast pocket. Trust stock, pressed, with the Tower's seal in the corner.",
                                      "HARBOR GATE. OBSERVE ONLY. Q. — DO NOT DETAIN.");
@@ -104,6 +108,7 @@ namespace HalcyonNoir
             {
                 yield return Fade(1, 0.8f);
                 player.EndCombat();
+            smoke?.PutOut();
                 yield return Narrate("I came to on the wet pavement with the taste of pennies in my mouth.",
                                      "They hadn't taken anything. They hadn't needed to. The message was the bruises.");
                 ui.Toast("You lost the fight. Whatever they were carrying went with them.", new Color(0.85f, 0.85f, 0.85f));
@@ -157,6 +162,7 @@ namespace HalcyonNoir
         IEnumerator Lockpick(System.Action<bool> done)
         {
             ui.PickOpen = true;
+            if (smoke.Lit) smoke.InMouth = true;   // hands busy: it hangs from his lips
             ui.PickPins = 3; ui.PickSet = 0; ui.PickStrikes = 0; ui.PickMaxStrikes = 3; ui.PickShake = 0;
             float[] speed = { 0.85f, 1.15f, 1.5f };
             float[] width = { 0.13f, 0.1f, 0.075f };
@@ -197,6 +203,7 @@ namespace HalcyonNoir
             }
             yield return Wait(0.4f);
             ui.PickOpen = false;
+            smoke.InMouth = false;
             done(result);
         }
     }

@@ -24,6 +24,8 @@ namespace HalcyonNoir
         public static bool SummonHeld => BotSummon || RawSummonHeld;
         public static int BotJabFrame = -1;
         public static bool Jab => Time.frameCount == BotJabFrame || RawJab;
+        public static int BotSmokeFrame = -1;
+        public static bool Smoke => Time.frameCount == BotSmokeFrame || RawSmoke;
 
 #if ENABLE_INPUT_SYSTEM
         static Keyboard K => Keyboard.current;
@@ -90,6 +92,7 @@ namespace HalcyonNoir
         public static bool Vent => Key(k => k.eKey.wasPressedThisFrame) || Pad(g => g.buttonEast.wasPressedThisFrame);
         public static bool Finisher => Key(k => k.fKey.wasPressedThisFrame) || Pad(g => g.rightTrigger.wasPressedThisFrame);
         static bool RawSummonHeld => Key(k => k.gKey.isPressed) || Pad(g => g.buttonNorth.isPressed);
+        static bool RawSmoke => Key(k => k.cKey.wasPressedThisFrame) || Pad(g => g.dpad.up.wasPressedThisFrame);
         public static bool ToggleShading => Key(k => k.f9Key.wasPressedThisFrame);
 #else
         static Vector2 RawMove => Vector2.ClampMagnitude(new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical")), 1f);
@@ -120,6 +123,7 @@ namespace HalcyonNoir
         public static bool Vent => Input.GetKeyDown(KeyCode.E);
         public static bool Finisher => Input.GetKeyDown(KeyCode.F);
         static bool RawSummonHeld => Input.GetKey(KeyCode.G);
+        static bool RawSmoke => Input.GetKeyDown(KeyCode.C);
         public static bool ToggleShading => Input.GetKeyDown(KeyCode.F9);
 #endif
     }

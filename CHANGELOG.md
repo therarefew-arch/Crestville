@@ -1,5 +1,58 @@
 # Changelog
 
+## v0.0.06
+- **New opening: the drive in.**
+  - The game starts on the causeway into Halcyon at night. Vane is at the wheel of his long black car, in the
+    rain.
+  - Wren, his assistant, rides in the passenger seat. She's an android and keeps his files. She gives him the
+    rundown on the job: who Mara is, the missing brother, the cases the Trust closed, the light under the
+    water, and how his link band warms up near the harbor.
+  - Vane lights a cigarette one-handed while he drives.
+  - The car rolls up Harbor Street and parks, Vane gets out into the rain, and the investigation starts.
+  - Wren waits in the car. Walk up and talk to her for a recap or a nudge toward the next lead.
+- **The Tidewarden doesn't wait anymore.**
+  - It comes for the pier while you call the Graven, and tears the end of the pier off. Vane is thrown back.
+  - The Graven rises beside it. They know each other for a moment. Then the Graven shoves it back out into deep
+    water.
+  - It comes again while Vane runs for the hand and climbs aboard, roaring as the hatch seals.
+- **The fight happens in the same place.** There's no cut to a separate arena any more. When the link comes
+  up, the tide goes out all at once, and the two machines fight on the harbor bed off the end of the pier. Under
+  them are mud, rock, old pilings and a wrecked fishing boat. Around them are stone quays, cranes and
+  warehouses, with Harbor Street right behind. The machines stay off the pier and out of the street.
+- **Smoking.**
+  - Vane has a real cigarette. He lights it with a lighter cupped in both hands, takes slow drags that make the
+    ember flare and light his face, lets the smoke out, and flicks the butt away when he's done. A thin wisp
+    curls off the tip.
+  - **[C]** lights up or takes a drag, and he thinks the case over: a line about where to look next.
+  - **The trail:** a meter in the corner fills with every clue and lead. The deeper he is in the case, the
+    more often he lights up on his own and the heavier the smoke.
+  - He smokes in the cutscenes:
+    - every new clue
+    - Mara's story
+    - the pawn ticket
+    - lighting up before he questions Gil
+    - the gouges
+    - the deduction, where he flicks the butt into the harbor before he calls the Graven
+    - flicking it at the Trust's man ("This is the letter.") and lighting up after the fight
+    - with it hanging from his lips while he picks the lock
+    - the epilogue with Mara
+  - **In the cockpit**, before the link, you light up (**[C]**) and take a drag (**[C]**) in the dark. The smoke
+    hangs in the amber light, then he plugs in.
+  - Ostrowski's cigarette smokes too.
+- **People move more.**
+  - Everyone turns their head to look at Vane when he's near, and he looks back.
+  - Whoever is talking gestures and nods.
+  - Idle people shift their weight. Mara stands with a hand on her hip and Gil keeps his hands in his pockets.
+  - Vane leans into a run.
+- **Harbor Street, lived in.**
+  - Lit shop windows and doors, awnings, and vertical neon blade signs (HOTEL, PAWN, DINER, RADIO...).
+  - Fire escapes up the towers, and parked cars along the curbs.
+  - Steam rising from the manholes and puddles catching the lamplight.
+  - Hydrants, trash cans, a mailbox and a lit phone booth.
+  - The street now continues west out of town.
+- New sounds: the lighter, an exhale, the car's engine and its door.
+
+
 ## v0.0.05
 - **Your own music.** Drop an audio file named `investigation` (mp3, ogg or wav) into
   `HalcyonNoir/Resources/Music/` and it replaces the investigation theme. A file named `fight` replaces the fight

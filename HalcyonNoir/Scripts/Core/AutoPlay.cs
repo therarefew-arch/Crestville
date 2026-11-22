@@ -14,13 +14,14 @@ namespace HalcyonNoir
             StartCoroutine(AutoTalk());
             StartCoroutine(AutoBrawl());
             // after Gil lies, heading back up the street to Ostrowski walks into the Trust ambush
-            string[] route = { "mara", "ostrowski", "gouges", "gate", "gil", "gil", "ostrowski", "gouges" };
+            string[] route = { "wren", "mara", "ostrowski", "gouges", "gate", "gil", "gil", "ostrowski", "gouges" };
             foreach (var id in route)
             {
                 while (phase != Phase.Explore || busy) yield return null;
                 yield return new WaitForSecondsRealtime(0.8f);
                 var it = Find(id);
                 if (it == null || !it.Enabled) { Debug.Log($"[Auto] {id}: missing or disabled"); continue; }
+                if (id == "mara") { In.BotSmokeFrame = Time.frameCount + 1; Debug.Log("[Auto] smoke and think"); }
                 Debug.Log($"[Auto] walking to {id} at {it.transform.position} from {player.transform.position}");
                 yield return AutoWalk(it);
                 In.BotMove = Vector2.zero;

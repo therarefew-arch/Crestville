@@ -7,7 +7,7 @@ namespace HalcyonNoir
 {
     public static class Game
     {
-        public const string Version = "v0.0.05";
+        public const string Version = "v0.0.06";
         public static bool Paused;
     }
 
@@ -96,6 +96,7 @@ namespace HalcyonNoir
             var right = Vector3.Cross(Vector3.up, dir);
             // over-the-shoulder: the Graven sits left of center so the enemy stays readable past it
             var want = A.position - dir * 46f + Vector3.up * 21f + right * 17f;
+            want.x = Mathf.Max(want.x, 44f);   // stay out over the harbor, not inside the buildings on Harbor Street
             transform.position = Vector3.SmoothDamp(transform.position, want, ref vel, 0.25f, Mathf.Infinity, dt);
             var look = Vector3.Lerp(A.position + Vector3.up * 12, B.position + Vector3.up * 8, 0.55f);
             transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(look - transform.position), 1 - Mathf.Exp(-dt * 6));
@@ -156,6 +157,7 @@ namespace HalcyonNoir
             city = new City();
             city.BuildStreet();
             city.BuildArena();
+            city.BuildDrive();
             rain = City.MakeRain(cam.transform);
 
             player = PlayerMotor.Make(city.Root, city.PlayerSpawn, 90);
@@ -163,6 +165,9 @@ namespace HalcyonNoir
             orbit.Target = player.transform;
             orbit.Yaw = 90;
             player.Cam = orbit;
+            smoke = Smoker.Add(player.Figure);
+            city.People["mara"].Idle = Figure.Stance.HandOnHip;
+            city.People["gil"].Idle = Figure.Stance.HandsInPockets;
             mechCam = cam.gameObject.AddComponent<MechCamera>();
             mechCam.enabled = false;
 
@@ -212,6 +217,7 @@ namespace HalcyonNoir
             orbit.Control = !Game.Paused && !busy;
             player.CanMove = !Game.Paused && !busy && (phase == Phase.Explore || phase == Phase.Brawl);
             if (phase == Phase.Explore && !Game.Paused && !busy && ShouldAmbush()) StartCoroutine(Ambush());
+            UpdateOnFoot();
 
             if (phase == Phase.Explore && !Game.Paused)
             {
@@ -247,6 +253,8 @@ namespace HalcyonNoir
         {
             ui.SetLine(speaker, text);
             if (!string.IsNullOrEmpty(speaker)) Sound.I?.Play("blip", 0.15f, speaker == "Vane" ? 0.8f : 1.1f);
+            var talker = SpeakerFigure(speaker);
+            if (talker != null) talker.Talking = Mathf.Clamp(text.Length * 0.04f, 0.8f, 4f);
             yield return null;
             while (true)
             {
@@ -331,6 +339,7 @@ namespace HalcyonNoir
             ui.NotebookEntries.Add((title, body));
             Sound.I?.Play("clue", 0.6f);
             ui.Toast("Notebook: " + title + "   [Tab]");
+            StartCoroutine(DragSoon(0.7f));
             UpdateFooter();
         }
 
@@ -381,6 +390,7 @@ namespace HalcyonNoir
             switch (id)
             {
                 case "mara": yield return TalkMara(); break;
+                case "wren": yield return TalkWren(); break;
                 case "ostrowski": yield return TalkOstrowski(); break;
                 case "gil": yield return TalkGil(); break;
                 case "gate": yield return ExamineGate(); break;
@@ -415,30 +425,20 @@ namespace HalcyonNoir
                 player.Cc.enabled = false; player.transform.position = at; player.Cc.enabled = true;
                 ui.Letterbox = 1;
                 StartCoroutine(Fade(0, 1f));
-                yield return CallGraven(at);
+                var crab = BossController.Make(new Vector3(city.HarborGlowPos.x, City.Arena.y, city.HarborGlowPos.z), Quaternion.LookRotation(Vector3.left));
+                yield return CallGraven(at, crab);
                 In.BotSummon = false;
-                yield return StartFight();
+                yield return StartFight(crab);
                 yield break;
             }
+            // the drive in: the causeway, Wren's rundown, Harbor Street, out into the rain (Opening.cs)
+            yield return OpeningDrive();
             Sound.I?.PlayMusic("noir", 0.4f);
-            yield return Wait(0.8f);
-            yield return Narrate(
-                "Halcyon. Forty years ago, the whole city woke up on the same morning and couldn't remember a thing.",
-                "Nobody knows who built the towers. Nobody knows why it always rains. Most people have stopped asking.",
-                "I find things for a living. Rings. Ledgers. Now and then, people.",
-                "That night it was a woman in red, and the brother she couldn't find.");
-            ui.Letterbox = 1;
-            Shot(city.PlayerSpawn + new Vector3(-6, 6, -5), city.PlayerSpawn + new Vector3(12, 3, 4));
-            cam.transform.position = orbit.CinePos;
-            StartCoroutine(Fade(0, 2.5f));
-            yield return Card("HALCYON NOIR", $"Episode 1  —  Low Tide\n<size=20>{Game.Version}</size>", 2.5f);
-            EndShot();
-            yield return Letterbox(0, 0.8f);
             phase = Phase.Explore;
             busy = false;
             SetObjective();
             UpdateFooter();
-            ui.Toast("WASD move · Mouse look · Shift run · E interact · Tab notebook · Esc pause", new Color(0.85f, 0.85f, 0.85f));
+            ui.Toast("WASD move · Mouse look · Shift run · E interact · C smoke · Tab notebook · Esc pause", new Color(0.85f, 0.85f, 0.85f));
             // the rest of the investigation is driven by Update/Interact until the deduction
         }
 
@@ -453,6 +453,7 @@ namespace HalcyonNoir
                 yield return Say("Mara", "My brother. Teodor. Three nights now. He's never been gone three nights.");
                 yield return Say("Vane", "People go missing in this city all the time. Most of them want to.");
                 yield return Say("Mara", "Not Teo. A week ago he came home soaked to the knees and said he remembered something. From before.");
+                smoke.Drag();
                 yield return Narrate("Nobody remembers anything from before. Saying you do is the quickest way to get a visit from the Trust.");
                 metMara = true;
                 ui.NotebookEntries.Add(("The client", "Mara Quill, singer at the Blue Lantern. Her brother Teodor has been missing three nights. A week ago he said he remembered something from before the Blank."));
@@ -517,6 +518,7 @@ namespace HalcyonNoir
                 yield return Say("Ostrowski", "Four days back he pawned something with me. A key. Brass, heavy, old. Stamped with a wave.");
                 yield return Say("Vane", "You run a pawn shop now?");
                 yield return Say("Ostrowski", "I run a bar. People pay how they pay.");
+                smoke.Drag();
                 yield return Say("Ostrowski", "The night he disappeared he came back with every coin he had and bought it back. Hands shaking. Wouldn't say what it opened.");
                 yield return Narrate("The ticket was still in the drawer. \"One key, brass, wave mark.\" Teo's signature was barely a signature.");
                 haveTicket = true;
@@ -545,6 +547,7 @@ namespace HalcyonNoir
             if (!gilLied)
             {
                 yield return Say("Gil", "Pier's closed. Go home.");
+                smoke.LightUp();
                 yield return Say("Vane", "I'm looking for Teodor Quill.");
                 yield return Say("Gil", "Never heard of him.");
                 yield return Narrate("He'd heard of him. He looked at the water when he said it.");
@@ -577,6 +580,7 @@ namespace HalcyonNoir
                 {
                     yield return Narrate("For a while the only sound was the rain on his hat.");
                     yield return Say("Gil", "...You saw those.");
+                    smoke.Drag();
                     yield return Say("Gil", "He had a key. He opened the tide gate. Forty years that thing's been shut, and he just opened it.");
                     yield return Say("Gil", "The water lit up. Green and gold, like a lamp under the waves. And he walked in. Didn't swim. Walked. Down the steps like he was going home.");
                     yield return Say("Gil", "Next morning there were those marks, and the gate was shut again. I didn't call the Trust. I didn't call anybody.");
@@ -594,6 +598,7 @@ namespace HalcyonNoir
         {
             var g = Find("gouges").transform.position;
             Shot(g + new Vector3(-3.5f, 2.6f, 2.2f), g + new Vector3(1, 0, 0));
+            smoke.Drag();
             yield return Wait(0.6f);
             yield return Narrate(
                 "Four grooves in the planks, deep as my arm, running straight to the edge.",
@@ -637,6 +642,7 @@ namespace HalcyonNoir
             player.FaceTowards(p + Vector3.right * 10);
             Shot(p + new Vector3(-4, 2.4f, 3), city.HarborGlowPos + Vector3.up * 4);
             Sound.I?.MusicVolume(0.2f);
+            smoke.Drag();
             yield return Narrate("I stood at the end of the pier and let the rain do the talking.",
                                  "I'd get one chance to be right. The harbor doesn't do second chances.");
 
@@ -687,37 +693,50 @@ namespace HalcyonNoir
             Sound.I?.Play("roar", 0.7f, 0.6f);
             Fx.I?.Shake(1.2f, 2.5f);
             // the Tidewarden rising out in the harbor, seen from the pier (an inert copy; the fight makes its own)
-            var risen = BossController.Make(city.HarborGlowPos + Vector3.down * 24, Quaternion.LookRotation(Vector3.left));
-            StartCoroutine(RiseFromHarbor(risen.transform, city.HarborGlowPos + Vector3.down * 3, 5f));
+            var risenAt = new Vector3(city.HarborGlowPos.x, City.Arena.y, city.HarborGlowPos.z);
+            var risen = BossController.Make(risenAt + Vector3.down * 24, Quaternion.LookRotation(Vector3.left));
+            StartCoroutine(RiseFromHarbor(risen.transform, risenAt, 5f));
             yield return Narrate("Something was standing up out there. Something the size of a building, with a lantern where its heart should be.");
+            // he's done with this one: the butt goes spinning out into the harbor
+            Shot(p + new Vector3(-2.6f, 1.7f, 2.2f), p + new Vector3(1.5f, 1.5f, -0.6f));
+            yield return Wait(0.4f);
+            if (!smoke.Lit) { yield return smoke.LightUpCo(); }
+            yield return smoke.DragCo();
+            yield return smoke.FlickCo();
             yield return Say("Vane", "Graven. Wake up.");
             yield return Narrate("I've never asked why it answers to me. Some questions you don't ask when the answer is a hundred feet tall.");
-            // the call: Vane raises the link band, the Graven comes up out of the harbor, takes him aboard,
-            // and the cockpit wakes up around him (see CallIn.cs)
-            yield return CallGraven(p);
-            if (risen != null) Destroy(risen.gameObject);
-            yield return StartFight();
+            // the call: Vane raises the link band, the Graven comes up out of the harbor between him and the
+            // Tidewarden, takes him aboard, and the cockpit wakes up around him (see CallIn.cs). The fight starts
+            // right there in the harbor.
+            yield return CallGraven(p, risen);
+            yield return StartFight(risen);
         }
 
-        IEnumerator StartFight()
+        IEnumerator StartFight(BossController risen = null)
         {
             phase = Phase.Fight;
             player.gameObject.SetActive(false);
             ui.Objective = null;
+            ui.Trail = -1;
             float hpMult = (outcome == 2 ? 1f : outcome == 1 ? 0.9f : 0.8f) * LinkSync;
 
-            graven = GravenController.Make(city.GravenSpawn, Quaternion.LookRotation(Vector3.right));
+            // the Graven stands where it took Vane aboard; the Tidewarden is wherever the call-in left it
+            var gPos = city.GravenSpawn;
+            if (gravenStood.HasValue) gPos = new Vector3(Mathf.Max(gravenStood.Value.x, City.Arena.x + City.LandEdgeX), City.Arena.y, gravenStood.Value.z);
+            graven = GravenController.Make(gPos, Quaternion.LookRotation(Vector3.right));
+            if (risen != null)
+            {
+                var bp = risen.transform.position; bp.y = City.Arena.y;
+                bp.x = Mathf.Max(bp.x, gPos.x + 24);
+                boss = BossController.Make(bp, Quaternion.LookRotation(Flat(gPos - bp)));
+                graven.transform.rotation = Quaternion.LookRotation(Flat(bp - gPos));
+                Destroy(risen.gameObject);
+                yield return HarborFightOpening(hpMult);
+                yield break;
+            }
+            DrainHarbor(1f);
             boss = BossController.Make(city.BossSpawn + Vector3.down * 26, Quaternion.LookRotation(Vector3.left));
-            graven.Boss = boss;
-            graven.Sharp = outcome == 2;
-            graven.Controllable = false;
-            graven.ResetForFight(hpMult);
-            boss.Target = graven;
-            boss.SetSharp(outcome == 2);
-            boss.ResetForFight();
-            graven.OnDeath = () => { };
-            boss.OnPhaseChange = () => StartCoroutine(PhaseLine(boss.Phase));
-            ui.Graven = graven; ui.Boss = boss;
+            SetUpFighters(hpMult);
 
             // the Tidewarden rises out of the harbor
             busy = true;
@@ -892,14 +911,17 @@ namespace HalcyonNoir
             player.transform.position = mara.transform.position + new Vector3(0, 0, -1.8f);
             cc.enabled = true;
             city.HarborLight.intensity = 0.3f;
+            DrainHarbor(0);
             ui.Letterbox = 1;
             TalkShot(mara);
             cam.transform.position = orbit.CinePos;
             yield return Fade(0, 1.5f);
             yield return Say("Mara", "That's his voice.");
+            smoke.LightUp();
             yield return Say("Vane", "He's alive. Somewhere down there.");
             yield return Say("Mara", "Then you're not done.");
             yield return Say("Vane", "No. I don't think anybody is.");
+            smoke.Drag();
             yield return Narrate("Forty years this city has been forgetting. That night, for the first time, something remembered back.");
             yield return Fade(1, 2f);
             string rank = outcome == 2 ? "Sharp" : outcome == 1 ? "Shaken" : "Lost";

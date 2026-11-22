@@ -316,10 +316,18 @@ namespace HalcyonNoir
         public bool Cinematic;
         public Vector3 CinePos, CineLook;
         public float CineSpeed = 2.5f;
+        public Transform CineAnchor;    // when set, CinePos and CineLook are local to it and the camera rides along rigidly (the drive)
         float curDist;
 
         void LateUpdate()
         {
+            if (Cinematic && CineAnchor != null)
+            {
+                transform.position = CineAnchor.TransformPoint(CinePos);
+                transform.rotation = Quaternion.LookRotation(CineAnchor.TransformPoint(CineLook) - transform.position);
+                if (Fx.I != null) transform.position += transform.rotation * Fx.I.ShakeOffset;
+                return;
+            }
             if (Cinematic)
             {
                 transform.position = Vector3.Lerp(transform.position, CinePos, 1 - Mathf.Exp(-Time.unscaledDeltaTime * CineSpeed));

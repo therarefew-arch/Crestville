@@ -48,6 +48,7 @@ namespace HalcyonNoir
             clips["rumble"] = MakeRumble();
             clips["charge"] = MakeCharge();
             clips["roar"] = MakeRoar();
+            MakeExtras();
             // Your own tracks win: drop an audio file named "investigation" or "fight" (mp3, ogg or wav) into
             // HalcyonNoir/Resources/Music/ and it replaces the synthesized theme. It loops.
             foreach (var (key, file) in new[] { ("noir", "investigation"), ("fight", "fight") })

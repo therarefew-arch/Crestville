@@ -24,6 +24,7 @@ namespace HalcyonNoir
         public bool MechHud;
         public bool Sharp;
         public string HintLine;
+        public float Trail = -1;         // 0..1, the trail meter; -1 hides it
 
         // the street brawl
         public PlayerMotor Brawler;
@@ -271,6 +272,21 @@ namespace HalcyonNoir
             // objective
             if (!string.IsNullOrEmpty(Objective) && Letterbox < 0.5f && !MechHud)
                 Text(new Rect(48, 36, 900, 80), "<size=20><b>CASE</b></size>\n" + Objective, sSmall);
+
+            // the trail: how deep into the case Vane is. The deeper, the more he smokes.
+            if (Trail >= 0 && Letterbox < 0.5f && !MechHud && Brawler == null)
+            {
+                Text(new Rect(48, H - 98, 300, 30), "<size=16>THE TRAIL</size>", sSmall, 0.7f);
+                var oldc = GUI.color;
+                int segs = 8, lit = Mathf.RoundToInt(Trail * segs);
+                for (int i = 0; i < segs; i++)
+                {
+                    GUI.color = i < lit ? new Color(1f, 0.55f, 0.2f, 0.9f) : new Color(1f, 1f, 1f, 0.18f);
+                    GUI.DrawTexture(R(new Rect(150 + i * 22, H - 87, 16, 6)), Texture2D.whiteTexture);
+                }
+                GUI.color = oldc;
+                Text(new Rect(48, H - 66, 500, 30), "<size=15>[C] smoke · think it over</size>", sSmall, 0.4f);
+            }
 
             if (MechHud) DrawMechHud(vw);
             if (Brawler != null) DrawBrawlHud(vw);

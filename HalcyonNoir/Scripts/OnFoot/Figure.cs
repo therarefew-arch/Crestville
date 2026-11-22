@@ -25,6 +25,13 @@ namespace HalcyonNoir
         public Vector3? ArmLPose, ArmRPose, BodyPose;
         public float ForeLBend = -1, ForeRBend = -1;  // elbow bend in degrees; -1 means automatic
         public bool Seated;
+        // life: where the head is looking, a talking gesture timer, an idle stance and a little sway
+        public Vector3? LookTarget;
+        public float Talking;                    // seconds of talking gesture left
+        public enum Stance { Plain, HandOnHip, HandsInPockets, ArmsBehind }
+        public Stance Idle;
+        float swaySeed, talkPhase;
+        float puffT;
 
         public struct Look
         {
@@ -247,16 +254,45 @@ namespace HalcyonNoir
                 ArmL.localEulerAngles = new Vector3(-swing * 0.7f, 0, 3);
                 ArmR.localEulerAngles = new Vector3(swing * 0.7f, 0, -3);
                 Body.localPosition = new Vector3(0, Mathf.Abs(Mathf.Sin(WalkPhase)) * 0.04f, 0);
+                idleRoll = Mathf.Sin(WalkPhase) * 2f * Speed01;
+                walkLean = Speed01 * 7f;
             }
             else
             {
                 LegL.localRotation = Quaternion.Slerp(LegL.localRotation, Quaternion.identity, dt * 8);
                 LegR.localRotation = Quaternion.Slerp(LegR.localRotation, Quaternion.identity, dt * 8);
                 float breathe = Mathf.Sin(t * 1.4f + (GetHashCode() % 97)) * 2f;
-                ArmL.localEulerAngles = new Vector3(breathe, 0, 4);
-                ArmR.localEulerAngles = Smoking ? new Vector3(-95f + Mathf.Sin(t * 0.4f) * 25f, 20, -10) : new Vector3(-breathe, 0, -4);
-                Body.localPosition = Vector3.Lerp(Body.localPosition, Vector3.zero, dt * 6);
-                if (cigarette != null) cigarette.intensity = 0.4f + Mathf.PerlinNoise(t * 2, 0) * 0.6f;
+                Vector3 armL = new Vector3(breathe, 0, 4), armR = new Vector3(-breathe, 0, -4);
+                switch (Idle)
+                {
+                    case Stance.HandOnHip: armL = new Vector3(-6 + breathe * 0.5f, -10, 38); break;
+                    case Stance.HandsInPockets: armL = new Vector3(10 + breathe * 0.3f, 0, 7); armR = new Vector3(10 - breathe * 0.3f, 0, -7); break;
+                    case Stance.ArmsBehind: armL = new Vector3(22 + breathe * 0.3f, 0, -8); armR = new Vector3(22 - breathe * 0.3f, 0, 8); break;
+                }
+                if (Smoking) armR = new Vector3(-95f + Mathf.Sin(t * 0.4f) * 25f, 20, -10);
+                // talking: the hands come up and move with the words
+                if (Talking > 0)
+                {
+                    talkPhase += dt * 4.2f;
+                    float g = Mathf.Clamp01(Talking * 2f);
+                    armR = Vector3.Lerp(armR, new Vector3(-38 + Mathf.Sin(talkPhase) * 14f, -15, -8 + Mathf.Sin(talkPhase * 0.5f) * 6f), g);
+                    if (Idle == Stance.Plain) armL = Vector3.Lerp(armL, new Vector3(-18 + Mathf.Sin(talkPhase * 0.7f + 1) * 8f, 10, 8), g * 0.6f);
+                }
+                ArmL.localRotation = Quaternion.Slerp(ArmL.localRotation, Quaternion.Euler(armL), dt * 5);
+                ArmR.localRotation = Quaternion.Slerp(ArmR.localRotation, Quaternion.Euler(armR), dt * 5);
+                // weight shifts from foot to foot every few seconds
+                float shift = (Mathf.PerlinNoise(t * 0.18f, swaySeed) - 0.5f) * 2f;
+                Body.localPosition = Vector3.Lerp(Body.localPosition, new Vector3(shift * 0.025f, 0, 0), dt * 3);
+                idleRoll = shift * 2.2f;
+                if (cigarette != null)
+                {
+                    cigarette.intensity = 0.4f + Mathf.PerlinNoise(t * 2, 0) * 0.6f;
+                    puffT -= dt;
+                    if (puffT <= 0) { puffT = Random.Range(0.1f, 0.2f); Fx.I?.Smoke(cigarette.transform.position, new Vector3(0, 0.12f, 0), 1, 0.4f); }
+                    // at the top of the arm swing the cigarette is at his lips: a slow exhale a moment later
+                    if (Mathf.Sin(t * 0.4f) < -0.97f && Time.time > nextExhale) { nextExhale = Time.time + 6f; exhaleAt = Time.time + 1.4f; }
+                    if (exhaleAt > 0 && Time.time > exhaleAt) { exhaleAt = 0; StartCoroutine(GenericExhale()); }
+                }
             }
 
             // scripted poses blend over the procedural ones
@@ -265,7 +301,10 @@ namespace HalcyonNoir
             else armLHeld = ArmL.localRotation;
             if (ArmRPose.HasValue) { armRHeld = Quaternion.Slerp(armRHeld, Quaternion.Euler(ArmRPose.Value), k); ArmR.localRotation = armRHeld; }
             else armRHeld = ArmR.localRotation;
-            var bodyTarget = BodyPose.HasValue ? Quaternion.Euler(BodyPose.Value) : Quaternion.identity;
+            if (Speed01 <= 0.01f) walkLean = 0;
+            if (Talking > 0) Talking -= dt;
+            var bodyTarget = BodyPose.HasValue ? Quaternion.Euler(BodyPose.Value) : Quaternion.Euler(walkLean, 0, Seated ? 0 : idleRoll);
+            HeadLook(dt);
             Body.localRotation = Quaternion.Slerp(Body.localRotation, bodyTarget, 1 - Mathf.Exp(-dt * 12f));
 
             // elbows: a slight natural bend that follows the arm swing, or a scripted bend
@@ -315,6 +354,40 @@ namespace HalcyonNoir
         }
 
         Quaternion armLHeld = Quaternion.identity, armRHeld = Quaternion.identity;
+        float idleRoll, walkLean, nextExhale, exhaleAt;
+        Quaternion headHeld = Quaternion.identity;
+
+        // The head turns toward whatever it's looking at, within reason; talking adds small nods.
+        void HeadLook(float dt)
+        {
+            if (Head == null) return;
+            var want = Quaternion.identity;
+            if (LookTarget.HasValue)
+            {
+                var d = Body.InverseTransformDirection(LookTarget.Value - Head.position);
+                float yaw = Mathf.Clamp(Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg, -65, 65);
+                float pitch = Mathf.Clamp(-Mathf.Atan2(d.y, new Vector2(d.x, d.z).magnitude) * Mathf.Rad2Deg, -25, 25);
+                if (d.z < -0.2f && Mathf.Abs(yaw) > 60) yaw = 0;   // behind: don't wrench the neck
+                want = Quaternion.Euler(pitch, yaw, 0);
+            }
+            if (Talking > 0) want *= Quaternion.Euler(Mathf.Sin(talkPhase * 1.3f) * 4f, Mathf.Sin(talkPhase * 0.6f) * 5f, Mathf.Sin(talkPhase * 0.9f) * 2f);
+            else want *= Quaternion.Euler(Mathf.Sin(Time.time * 0.5f + swaySeed) * 1.5f, Mathf.Sin(Time.time * 0.23f + swaySeed) * 4f, 0);
+            headHeld = Quaternion.Slerp(headHeld, want, 1 - Mathf.Exp(-dt * 5f));
+            Head.localRotation = headHeld;
+        }
+
+        System.Collections.IEnumerator GenericExhale()
+        {
+            for (float t = 0; t < 1f; t += Time.deltaTime)
+            {
+                var mouth = Head.TransformPoint(new Vector3(0, 0.08f, 0.13f));
+                if (Random.value < 0.7f) Fx.I?.Smoke(mouth, (Head.forward + Vector3.down * 0.2f) * 0.5f, 2, 1f);
+                yield return null;
+            }
+        }
+
+        void Start() { swaySeed = Random.value * 100f; }
+
         static float NormAngle(float a) { a %= 360; return a > 180 ? a - 360 : a; }
     }
 }

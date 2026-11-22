@@ -154,6 +154,20 @@ namespace HalcyonNoir
             hatch.localEulerAngles = new Vector3(95 * hatchOpen, 0, 0);
         }
 
+        // Both arms driven straight out, shoulders behind them: shoving something big away. k 0..1.
+        public void ScriptShove(float k)
+        {
+            ScriptPose(0, 0, 0, 0);
+            armR.localRotation = Quaternion.Slerp(Quaternion.Euler(-20, 0, -10), Quaternion.Euler(-86, -10, -4), k);
+            armL.localRotation = Quaternion.Slerp(Quaternion.Euler(-20, 0, 10), Quaternion.Euler(-86, 10, 4), k);
+            foreR.localRotation = Quaternion.Euler(-8 * k, 0, 0);
+            foreL.localRotation = Quaternion.Euler(-8 * k, 0, 0);
+            torso.localEulerAngles = new Vector3(16 * k, 0, 0);
+            legL.localEulerAngles = new Vector3(-24 * k, 0, 0);
+            legR.localEulerAngles = new Vector3(20 * k, 0, 0);
+            hips.localPosition = new Vector3(0, 7.2f - 0.8f * k, 0);
+        }
+
         // A walking stride for cutscenes: legs swing, arms counter-swing, the torso rolls a little.
         public void ScriptWalk(float phase, float amount)
         {
@@ -338,7 +352,7 @@ namespace HalcyonNoir
             var p = transform.position;
             var rel = p - a; rel.y = 0;
             if (rel.magnitude > City.ArenaRadius) rel = rel.normalized * City.ArenaRadius;
-            rel.x = Mathf.Min(rel.x, City.WaterEdgeX - 8f);
+            rel.x = Mathf.Clamp(rel.x, City.LandEdgeX, City.WaterEdgeX - 8f);
             var np = new Vector3(a.x + rel.x, p.y, a.z + rel.z);
             if (Boss != null)
             {

@@ -14,7 +14,7 @@ namespace HalcyonNoir
     }
 
     // Builds Halcyon out of shapes: the investigation block and the harbor district arena.
-    public class City
+    public partial class City
     {
         public Transform Root;
         public Vector3 PlayerSpawn = new Vector3(-48, 0, 0);
@@ -22,14 +22,17 @@ namespace HalcyonNoir
         public Light HarborLight;
         public GameObject HarborGlow;
         public Transform RelicPreview;
+        public Transform HarborWater, WaterGlints, PierEnd;
         public readonly List<Interactable> Interactables = new List<Interactable>();
         public readonly Dictionary<string, Figure> People = new Dictionary<string, Figure>();
 
-        // The fight takes place far away from the street, in the harbor district.
-        public static readonly Vector3 Arena = new Vector3(0, 0, 2000);
+        // The fight takes place in the harbor itself, right off the end of the pier, on the harbor bed the
+        // tide leaves behind when the Tidewarden comes up. Its floor is 2.3 m below the street.
+        public static readonly Vector3 Arena = new Vector3(118, -2.3f, 4);
+        public const float LandEdgeX = -50f;   // relative to Arena: the machines stay off the pier and out of the street
         public Vector3 GravenSpawn => Arena + new Vector3(-45, 0, 0);
         public Vector3 BossSpawn => Arena + new Vector3(70, 0, 0);
-        public const float ArenaRadius = 92f;
+        public const float ArenaRadius = 86f;
         public const float WaterEdgeX = 52f; // relative to Arena
 
         static readonly System.Random rng = new System.Random(1947);
@@ -195,7 +198,9 @@ namespace HalcyonNoir
                 if (w > 5)
                 {
                     bool isBar = xs <= -18 && xs + w >= -18;
-                    Tower(new Vector3(xs + w / 2, 0, 11f), w, 18, isBar ? 16 : R(34, 96), true);
+                    float th = isBar ? 16 : R(34, 96);
+                    Tower(new Vector3(xs + w / 2, 0, 11f), w, 18, th, true);
+                    streetFronts.Add((xs, w, th, true, isBar));
                 }
                 xs += w + R(0.2f, 1.2f);
             }
@@ -204,7 +209,7 @@ namespace HalcyonNoir
             {
                 float w = R(10, 17);
                 if (xs + w > 28) w = 28 - xs;
-                if (w > 5) Tower(new Vector3(xs + w / 2, 0, -11f), w, 18, R(34, 96), false);
+                if (w > 5) { float th = R(34, 96); Tower(new Vector3(xs + w / 2, 0, -11f), w, 18, th, false); streetFronts.Add((xs, w, th, false, false)); }
                 xs += w + R(0.2f, 1.2f);
             }
             // distant skyline across the harbor
@@ -222,6 +227,7 @@ namespace HalcyonNoir
             BuildHarbor();
             BuildBounds();
             BuildPeople();
+            DressStreet();
         }
 
         void BuildBar()
@@ -251,22 +257,28 @@ namespace HalcyonNoir
         void BuildHarbor()
         {
             // sea wall and water
-            Box(new Vector3(40.5f, -0.6f, -22f), new Vector3(1, 1.6f, 38), stoneMat);
-            Box(new Vector3(40.5f, -0.6f, 22f), new Vector3(1, 1.6f, 38), stoneMat);
+            Box(new Vector3(40.5f, -1.15f, -22f), new Vector3(1, 2.7f, 38), stoneMat);
+            Box(new Vector3(40.5f, -1.15f, 22f), new Vector3(1, 2.7f, 38), stoneMat);
             Box(new Vector3(40.5f, 0.6f, -22f), new Vector3(1.2f, 0.8f, 38), stoneMat);
             Box(new Vector3(40.5f, 0.6f, 22f), new Vector3(1.2f, 0.8f, 38), stoneMat);
-            var w = Build.Part(Root, PrimitiveType.Plane, new Vector3(200, -2.2f, 0), new Vector3(32, 1, 40), water);
+            var w = Build.Part(Root, PrimitiveType.Plane, new Vector3(230, -2.2f, 0), new Vector3(40, 1, 44), water);
             w.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            HarborWater = w.transform;
             // light glints on the water
+            WaterGlints = Build.Pivot(Root, "Glints", Vector3.zero);
             for (int i = 0; i < 40; i++)
-                Build.Part(Root, PrimitiveType.Quad, new Vector3(R(44, 160), -2.15f, R(-60, 60)), new Vector3(R(0.6f, 2.5f), 0.12f, 1), Mats.Glow(new Color(1f, 0.7f, 0.4f), 0.25f), new Vector3(90, R(-10, 10), 0));
+                Build.Part(WaterGlints, PrimitiveType.Quad, new Vector3(R(44, 160), -2.15f, R(-60, 60)), new Vector3(R(0.6f, 2.5f), 0.12f, 1), Mats.Glow(new Color(1f, 0.7f, 0.4f), 0.25f), new Vector3(90, R(-10, 10), 0));
             // the pier
-            Box(new Vector3(52, -0.25f, 0), new Vector3(24, 0.5f, 6), wood);
+            // the pier. The last few meters are their own piece: the Tidewarden takes them off.
+            PierEnd = Build.Pivot(Root, "PierEnd", Vector3.zero);   // parts in world positions; break it with RotateAround
+            Box(new Vector3(50.75f, -0.25f, 0), new Vector3(21.5f, 0.5f, 6), wood);
+            Box(new Vector3(62.85f, -0.25f, 0), new Vector3(2.7f, 0.5f, 6), wood, true, PierEnd);
             for (float x = 41; x <= 64; x += 3)
                 for (int s = -1; s <= 1; s += 2)
-                    Box(new Vector3(x, -1.2f, s * 2.8f), new Vector3(0.4f, 2.4f, 0.4f), wood, false);
-            for (int s = -1; s <= 1; s += 2) Box(new Vector3(52, 0.6f, s * 3f), new Vector3(24, 0.1f, 0.1f), metal, true);
-            Box(new Vector3(64.2f, 0.4f, 0), new Vector3(0.3f, 1, 6), metal, true);
+                    Box(new Vector3(x, -1.2f, s * 2.8f), new Vector3(0.4f, 2.4f, 0.4f), wood, false, x > 61.5f ? PierEnd : null);
+            for (int s = -1; s <= 1; s += 2) Box(new Vector3(50.75f, 0.6f, s * 3f), new Vector3(21.5f, 0.1f, 0.1f), metal, true);
+            for (int s = -1; s <= 1; s += 2) Box(new Vector3(62.85f, 0.6f, s * 3f), new Vector3(2.7f, 0.1f, 0.1f), metal, true, PierEnd);
+            Box(new Vector3(64.2f, 0.4f, 0), new Vector3(0.3f, 1, 6), metal, true, PierEnd);
             Lamp(new Vector3(58, 0, 2.4f));
             // gouges on the pier: four dark scorched grooves
             for (int i = 0; i < 4; i++)
@@ -329,75 +341,6 @@ namespace HalcyonNoir
             AddInteract("mara", "Talk to the woman in red", mara.transform.position, 2.4f, false);
             AddInteract("ostrowski", "Talk to the bartender", ost.transform.position, 2.4f, false);
             AddInteract("gil", "Talk to the watchman", gil.transform.position, 2.4f, false);
-        }
-
-        // ---------- the harbor district (robot fight) ----------
-        public void BuildArena()
-        {
-            var A = Arena;
-            var ground = Mats.Toon(new Color(0.16f, 0.16f, 0.19f), null, 0, 3);
-            Box(A + new Vector3(-20, -1, 0), new Vector3(150, 2, 190), ground);
-            // plaza tiles pattern
-            for (int i = -5; i <= 5; i++)
-            {
-                Box(A + new Vector3(-20, 0.02f, i * 16), new Vector3(150, 0.04f, 0.5f), Mats.Toon(new Color(0.24f, 0.22f, 0.24f)), false);
-                Box(A + new Vector3(-20 + i * 14, 0.02f, 0), new Vector3(0.5f, 0.04f, 190), Mats.Toon(new Color(0.24f, 0.22f, 0.24f)), false);
-            }
-            // water beyond the edge
-            var w = Build.Part(Root, PrimitiveType.Plane, A + new Vector3(260, -3f, 0), new Vector3(42, 1, 60), water);
-            w.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            Box(A + new Vector3(WaterEdgeX + 2, -1.5f, 0), new Vector3(4, 3, 190), stoneMat);
-            for (int i = 0; i < 60; i++)
-                Build.Part(Root, PrimitiveType.Quad, A + new Vector3(R(60, 300), -2.95f, R(-200, 200)), new Vector3(R(1, 5), 0.2f, 1), Mats.Glow(new Color(1f, 0.7f, 0.4f), 0.2f), new Vector3(90, R(-10, 10), 0));
-
-            // a ring of towers around the plaza, scaled up for giant machines
-            for (int i = 0; i < 18; i++)
-            {
-                float a = Mathf.Lerp(100, 260, i / 17f) * Mathf.Deg2Rad;
-                float rad = R(108, 125);
-                var p = A + new Vector3(Mathf.Cos(a) * rad - 15, 0, Mathf.Sin(a) * rad);
-                var holder = new GameObject("ArenaTower").transform;
-                holder.SetParent(Root, false);
-                holder.position = p;
-                holder.LookAt(new Vector3(A.x - 15, 0, A.z));
-                // human-scale floors on tall towers, so the 20-unit machines read as giants in a real city
-                Tower(Vector3.zero, R(22, 36), 30, R(90, 220), false, 1f, holder);
-            }
-            // skyline across the water
-            for (int i = 0; i < 20; i++) Tower(A + new Vector3(R(220, 420), 0, R(-300, 300)), R(30, 60), 30, R(160, 380), true, 1.3f);
-            // floodlights
-            for (int i = 0; i < 6; i++)
-            {
-                float z = -75 + i * 30;
-                var pos = A + new Vector3(-78, 0, z);
-                Lamp(pos, Root, 1.7f);   // a tall street lamp: knee-to-hip height on the Graven
-                Build.PointLight(Root, pos + new Vector3(10, 14, 0), new Color(1f, 0.62f, 0.32f), 60, 3f);
-            }
-            // dockside gantry cranes, kept to the flanks so the fight has room. They're the only things
-            // on the waterfront that tower over the Graven, and they should read as cranes, not lamp posts.
-            foreach (float z in new[] { -132f, -90f, 90f, 132f })
-                GantryCrane(A + new Vector3(WaterEdgeX - 5, 0, z));
-
-            // shipping containers: knee-high on a 20-unit machine, which sells the scale
-            var boxColors = new[] { new Color(0.45f, 0.18f, 0.12f), new Color(0.16f, 0.3f, 0.32f), new Color(0.5f, 0.38f, 0.16f),
-                                    new Color(0.2f, 0.22f, 0.32f), new Color(0.32f, 0.3f, 0.28f) };
-            var containerMats = new Material[boxColors.Length];
-            for (int i = 0; i < boxColors.Length; i++) containerMats[i] = Mats.Toon(boxColors[i]);
-            void Stack(Vector3 p, int high, float yaw)
-            {
-                for (int h = 0; h < high; h++)
-                {
-                    var go = Box(p + Vector3.up * (1.3f + h * 2.6f), new Vector3(12, 2.6f, 2.5f), containerMats[rng.Next(containerMats.Length)], true);
-                    go.transform.rotation = Quaternion.Euler(0, yaw + R(-3, 3), 0);
-                }
-            }
-            for (int i = 0; i < 7; i++)
-            {
-                Stack(A + new Vector3(-70 + i * 15 + R(-2, 2), 0, -84), rng.Next(1, 4), 0);
-                Stack(A + new Vector3(-70 + i * 15 + R(-2, 2), 0, 84), rng.Next(1, 4), 0);
-                if (rng.NextDouble() < 0.5) Stack(A + new Vector3(-70 + i * 15 + R(-2, 2), 0, -80.5f), rng.Next(1, 3), 0);
-                if (rng.NextDouble() < 0.5) Stack(A + new Vector3(-70 + i * 15 + R(-2, 2), 0, 80.5f), rng.Next(1, 3), 0);
-            }
         }
 
         // A dockside gantry crane, about 2.5x the Graven's height, with its boom out over the water.
