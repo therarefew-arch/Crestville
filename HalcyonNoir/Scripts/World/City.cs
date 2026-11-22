@@ -195,7 +195,7 @@ namespace HalcyonNoir
                 if (w > 5)
                 {
                     bool isBar = xs <= -18 && xs + w >= -18;
-                    Tower(new Vector3(xs + w / 2, 0, 11f), w, 18, isBar ? 16 : R(18, 44), true);
+                    Tower(new Vector3(xs + w / 2, 0, 11f), w, 18, isBar ? 16 : R(34, 96), true);
                 }
                 xs += w + R(0.2f, 1.2f);
             }
@@ -204,14 +204,14 @@ namespace HalcyonNoir
             {
                 float w = R(10, 17);
                 if (xs + w > 28) w = 28 - xs;
-                if (w > 5) Tower(new Vector3(xs + w / 2, 0, -11f), w, 18, R(18, 44), false);
+                if (w > 5) Tower(new Vector3(xs + w / 2, 0, -11f), w, 18, R(34, 96), false);
                 xs += w + R(0.2f, 1.2f);
             }
             // distant skyline across the harbor
             for (int i = 0; i < 26; i++)
             {
                 float x = R(-200, 200), z = R(120, 260);
-                Tower(new Vector3(x, 0, z), R(14, 30), 20, R(40, 120), true, 2f);
+                Tower(new Vector3(x, 0, z), R(14, 30), 20, R(90, 260), true, 2f);
             }
 
             // street lamps

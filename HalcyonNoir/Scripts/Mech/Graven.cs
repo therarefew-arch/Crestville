@@ -34,7 +34,8 @@ namespace HalcyonNoir
         float stepTimer;
 
         // rig
-        Transform torso, head, armL, armR, foreL, foreR, legL, legR;
+        Transform torso, head, armL, armR, foreL, foreR, legL, legR, hips, hatch;
+        public bool Scripted;   // driven by a cutscene: no input, physics or state machine
         Renderer visor;
         CharacterController cc;
 
@@ -60,7 +61,7 @@ namespace HalcyonNoir
             var visorMat = Mats.Glow(new Color(1f, 0.7f, 0.3f), 4f);
 
             // hips and legs
-            var hips = Build.Pivot(t, "Hips", new Vector3(0, 7.2f, 0));
+            hips = Build.Pivot(t, "Hips", new Vector3(0, 7.2f, 0));
             Build.Part(hips, PrimitiveType.Cube, Vector3.zero, new Vector3(6.4f, 2.6f, 4.2f), dark);
             Build.Part(hips, PrimitiveType.Cube, new Vector3(0, 0, 2.2f), new Vector3(3, 2, 0.4f), brass);
             legL = Build.Pivot(hips, "LegL", new Vector3(-2.3f, -0.6f, 0));
@@ -75,7 +76,13 @@ namespace HalcyonNoir
             // torso
             torso = Build.Pivot(t, "Torso", new Vector3(0, 8.6f, 0));
             Build.Part(torso, PrimitiveType.Cube, new Vector3(0, 3.2f, 0), new Vector3(8.6f, 6.2f, 5.2f), steel);
-            Build.Part(torso, PrimitiveType.Cube, new Vector3(0, 3.4f, 2.7f), new Vector3(5.2f, 4.4f, 0.5f), dark);
+            // the chest hatch: hinged at the bottom, it drops forward like a drawbridge to let the pilot in.
+            // Behind it, the cockpit's amber light.
+            Build.Part(torso, PrimitiveType.Quad, new Vector3(0, 3.4f, 2.62f), new Vector3(4.4f, 3.8f, 1), Mats.Glow(new Color(1f, 0.62f, 0.28f), 1.6f), new Vector3(0, 180, 0));
+            Build.Part(torso, PrimitiveType.Cube, new Vector3(0, 3.4f, 2.4f), new Vector3(4.6f, 4f, 0.3f), Mats.Toon(new Color(0.05f, 0.04f, 0.04f)));
+            hatch = Build.Pivot(torso, "Hatch", new Vector3(0, 1.2f, 2.7f));
+            Build.Part(hatch, PrimitiveType.Cube, new Vector3(0, 2.2f, 0), new Vector3(5.2f, 4.4f, 0.5f), dark);
+            Build.Part(hatch, PrimitiveType.Cube, new Vector3(0, 2.2f, -0.28f), new Vector3(4.6f, 3.8f, 0.08f), brass);
             for (int i = 0; i < 3; i++) Build.Part(torso, PrimitiveType.Cube, new Vector3(0, 2.2f + i * 1.1f, 3f), new Vector3(4.2f - i * 0.9f, 0.25f, 0.2f), brass);
             Build.Part(torso, PrimitiveType.Cube, new Vector3(0, 0.2f, 0), new Vector3(5.6f, 1.2f, 4.4f), dark);
             // exhaust stacks on the back
@@ -111,6 +118,45 @@ namespace HalcyonNoir
         public Vector3 FistPos(bool left) => (left ? foreL : foreR).TransformPoint(new Vector3(0, -5.2f, 0));
         public Vector3 Chest => transform.position + Vector3.up * 12f;
 
+        // ----- cutscene control -----
+        public Transform Hatch => hatch;
+        public Transform RightFore => foreR;
+        // The top surface of the open hatch, where the pilot stands before stepping inside.
+        public Vector3 HatchStep => hatch.TransformPoint(new Vector3(0, 3.2f, 0.3f));
+        public Vector3 CockpitDoor => torso.TransformPoint(new Vector3(0, 3.0f, 1.6f));
+        public Vector3 ExhaustPos(int side) => torso.TransformPoint(new Vector3(side * 2.2f, 9.6f, -2.4f));
+        public Vector3 VisorPos => visor.transform.position;
+
+        public void SetVisor(float intensity)
+        {
+            if (visor != null) visor.sharedMaterial = Mats.Glow(new Color(1f, 0.7f, 0.3f), Mathf.Max(0.5f, Mathf.Round(intensity * 2) / 2));
+            visor.enabled = intensity > 0.05f;
+        }
+
+        // crouch 0..1 lowers it in the water and leans it forward; reach 0..1 puts the right hand
+        // down and out, palm up; lift 0..1 brings that hand up in front of the chest; hatch 0..1 opens it.
+        public void ScriptPose(float crouch, float reach, float lift, float hatchOpen)
+        {
+            hips.localPosition = new Vector3(0, 7.2f - 3f * crouch, 0);
+            torso.localPosition = new Vector3(0, 8.6f - 3f * crouch, 0);
+            legL.localEulerAngles = new Vector3(-35 * crouch, 0, -6 * crouch);
+            legR.localEulerAngles = new Vector3(25 * crouch, 0, 6 * crouch);
+            torso.localEulerAngles = new Vector3(Mathf.Lerp(24 * crouch, 4, lift), 0, 0);
+            var idleL = new Vector3(-20, 0, 10);
+            var down = new Vector3(-38, 10, 0);
+            var up = new Vector3(-78, -28, 0);
+            var armRot = Quaternion.Slerp(Quaternion.Slerp(Quaternion.Euler(new Vector3(-20, 0, -10)), Quaternion.Euler(down), reach), Quaternion.Euler(up), lift);
+            armR.localRotation = armRot;
+            foreR.localPosition = new Vector3(0, -4.6f - 1.2f * reach * (1 - lift), 0);
+            foreR.localRotation = Quaternion.Euler(Mathf.Lerp(-20 * reach, -85, lift), 0, 0);
+            armL.localRotation = Quaternion.Euler(Vector3.Lerp(idleL, new Vector3(-30, 0, 20), crouch));
+            head.localEulerAngles = new Vector3(Mathf.Lerp(18 * reach, 8, lift), Mathf.Lerp(-6 * reach, 0, lift), 0);
+            hatch.localEulerAngles = new Vector3(95 * hatchOpen, 0, 0);
+        }
+
+        // Where Vane stands on the hand: on top of the fist block.
+        public Vector3 PalmTop => foreR.TransformPoint(new Vector3(0, -5.2f, 0)) + Vector3.up * 1.5f * transform.lossyScale.y;
+
         void Enter(St s, float dur) { st = s; stT = 0; stDur = dur; hitDone = false; }
 
         float DistToBoss()
@@ -129,6 +175,7 @@ namespace HalcyonNoir
 
         void Update()
         {
+            if (Scripted) return;
             float dt = Time.deltaTime;
             if (dt <= 0 || st == St.Dead) { Animate(dt); return; }
             stT += dt;

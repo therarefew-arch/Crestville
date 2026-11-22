@@ -25,6 +25,16 @@ namespace HalcyonNoir
         public bool Sharp;
         public string HintLine;
 
+        // the street brawl
+        public PlayerMotor Brawler;
+        public List<Thug> BrawlFoes;
+        // the lockpick: a needle sweeps the track, set each pin while it's inside the bright zone
+        public bool PickOpen;
+        public int PickPins = 3, PickSet, PickStrikes, PickMaxStrikes = 3;
+        public float PickNeedle, PickZone, PickWidth, PickShake;
+        // the cockpit link readout
+        public string LinkText; public float LinkAlpha;
+
         // dialogue
         public string Speaker, Line;
         int shown;
@@ -143,6 +153,7 @@ namespace HalcyonNoir
         public void SetLine(string speaker, string text)
         {
             Speaker = speaker; Line = text; shown = 0; typeTimer = 0;
+            if (DevArgs.Auto) Debug.Log($"[Auto] {(string.IsNullOrEmpty(speaker) ? "(narration)" : speaker)}: {text}");
         }
         public void FinishTyping() { if (Line != null) shown = Line.Length; }
         public void ClearLine() { Line = null; Speaker = null; }
@@ -184,6 +195,15 @@ namespace HalcyonNoir
             st.fontSize = Mathf.Max(1, Mathf.RoundToInt(fs * k));
             GUI.Label(R(r), ScaleTags(s), st);
             st.fontSize = fs;
+        }
+
+        float TextWidth(GUIStyle st, string s)
+        {
+            int fs = st.fontSize; bool wrap = st.wordWrap;
+            st.fontSize = Mathf.Max(1, Mathf.RoundToInt(fs * k)); st.wordWrap = false;
+            float w = st.CalcSize(new GUIContent(ScaleTags(s))).x / k;
+            st.fontSize = fs; st.wordWrap = wrap;
+            return w;
         }
 
         float CalcHeight(GUIStyle st, string s, float width)
@@ -253,6 +273,17 @@ namespace HalcyonNoir
                 Text(new Rect(48, 36, 900, 80), "<size=20><b>CASE</b></size>\n" + Objective, sSmall);
 
             if (MechHud) DrawMechHud(vw);
+            if (Brawler != null) DrawBrawlHud(vw);
+            if (PickOpen) DrawLockpick(vw);
+            if (!string.IsNullOrEmpty(HintLine)) Text(new Rect(0, H - 300, vw, 50), $"<size=24>{HintLine}</size>", sPrompt);
+            if (LinkAlpha > 0 && !string.IsNullOrEmpty(LinkText))
+            {
+                var st = new GUIStyle(sPrompt) { fontSize = 44, alignment = TextAnchor.MiddleLeft };
+                st.normal.textColor = new Color(1f, 0.72f, 0.35f);
+                Text(new Rect(140, H / 2 - 120, 1000, 240), LinkText, st, LinkAlpha);
+            }
+            // the build version, small in the corner, so screenshots and bug reports say which build they're from
+            Text(new Rect(vw - 260, H - 44, 240, 36), $"<size=18>Halcyon Noir {Game.Version}</size>", new GUIStyle(sSmall) { alignment = TextAnchor.LowerRight }, 0.45f);
 
             // toasts
             float ty = 150;
@@ -261,8 +292,10 @@ namespace HalcyonNoir
                 float a = Mathf.Clamp01(t.t * 4) * Mathf.Clamp01((4f - t.t) * 2);
                 var st = new GUIStyle(sPrompt) { fontSize = 30 };
                 st.normal.textColor = t.c;
-                Fill(new Rect(vw / 2 - 420, ty - 6, 840, 56), new Color(0, 0, 0, 0.55f * a));
-                Text(new Rect(vw / 2 - 420, ty - 6, 840, 56), t.text, st, a);
+                // size the box to the text so long hints (like the controls line) never wrap or clip
+                float tw = Mathf.Clamp(TextWidth(st, t.text) + 60, 500, vw - 120);
+                Fill(new Rect(vw / 2 - tw / 2, ty - 6, tw, 56), new Color(0, 0, 0, 0.55f * a));
+                Text(new Rect(vw / 2 - tw / 2, ty - 6, tw, 56), t.text, st, a);
                 ty += 66;
             }
 
@@ -391,7 +424,52 @@ namespace HalcyonNoir
             }
             Text(new Rect(vw - 760, H - 190, 700, 180),
                 "<size=22>[LMB] Jab   [RMB] Heavy   [Q] hold: Piston\n[Shift] Guard (perfect timing parries)\n[Space] Dodge   [E] Vent heat</size>", new GUIStyle(sSmall) { alignment = TextAnchor.LowerRight });
-            if (!string.IsNullOrEmpty(HintLine)) Text(new Rect(0, H - 300, vw, 50), $"<size=24>{HintLine}</size>", sPrompt);
+        }
+
+        void DrawBrawlHud(float vw)
+        {
+            var p = Brawler;
+            var r = new Rect(60, H - 150, 420, 18);
+            Text(new Rect(r.x, r.y - 44, 600, 40), "<b>VANE</b>", sSmall);
+            Bar(r, p.Hp / p.MaxHp, new Color(0.9f, 0.85f, 0.78f), new Color(0, 0, 0, 0.6f));
+            if (BrawlFoes != null)
+            {
+                float y = 60;
+                foreach (var f in BrawlFoes)
+                {
+                    if (f == null) continue;
+                    Text(new Rect(vw - 460, y - 34, 400, 32), f.IsDown ? "<size=20><i>down</i></size>" : "<size=20>Trust man</size>", new GUIStyle(sSmall) { alignment = TextAnchor.UpperRight }, f.IsDown ? 0.5f : 1f);
+                    Bar(new Rect(vw - 360, y, 300, 10), f.Hp / f.MaxHp, new Color(0.75f, 0.75f, 0.78f), new Color(0, 0, 0, 0.5f));
+                    y += 56;
+                }
+            }
+            Text(new Rect(vw - 860, H - 190, 800, 180),
+                "<size=22>[LMB] Jab (third hit hooks)   [RMB] Haymaker\n[Shift] Guard — tap it as a fist glints to parry\n[Space] Dodge   ·   hit a man mid-windup to break it</size>", new GUIStyle(sSmall) { alignment = TextAnchor.LowerRight });
+        }
+
+        void DrawLockpick(float vw)
+        {
+            var panel = new Rect(vw / 2 - 420, H / 2 - 230, 840, 400);
+            Fill(panel, new Color(0.02f, 0.02f, 0.03f, 0.9f));
+            Fill(new Rect(panel.x, panel.y, panel.width, 3), new Color(0.95f, 0.72f, 0.38f, 0.9f));
+            Text(new Rect(panel.x, panel.y + 20, panel.width, 40), "<size=26><b>THE TIDE GATE LOCK</b></size>", sPrompt);
+            // pins
+            float pw = 60, gap = 40, x0 = vw / 2 - (PickPins * pw + (PickPins - 1) * gap) / 2;
+            for (int i = 0; i < PickPins; i++)
+            {
+                bool set = i < PickSet, cur = i == PickSet;
+                float shake = cur ? Mathf.Sin(Time.unscaledTime * 80) * PickShake * 8 : 0;
+                var pr = new Rect(x0 + i * (pw + gap) + shake, panel.y + 80 + (set ? 0 : 30), pw, 90);
+                Fill(pr, set ? new Color(0.95f, 0.72f, 0.38f) : cur ? new Color(0.75f, 0.75f, 0.78f) : new Color(0.3f, 0.3f, 0.33f));
+            }
+            // the track
+            var tr = new Rect(panel.x + 80, panel.y + 240, panel.width - 160, 26);
+            Fill(tr, new Color(0.12f, 0.12f, 0.14f));
+            Fill(new Rect(tr.x + tr.width * (PickZone - PickWidth / 2), tr.y, tr.width * PickWidth, tr.height), new Color(0.95f, 0.72f, 0.38f, 0.85f));
+            Fill(new Rect(tr.x + tr.width * PickNeedle - 3, tr.y - 12, 6, tr.height + 24), Color.white);
+            string strikes = "";
+            for (int i = 0; i < PickMaxStrikes; i++) strikes += i < PickStrikes ? "X " : "· ";
+            Text(new Rect(panel.x, tr.yMax + 22, panel.width, 40), $"<size=22>[E] / [LMB]  set the pin when the needle is in the bright zone     slips: {strikes}</size>", sPrompt, 0.85f);
         }
 
         void DrawPause(float vw)

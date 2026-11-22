@@ -9,7 +9,8 @@ namespace HalcyonNoir
     {
         public static Sound I;
         const int SR = 22050;
-        AudioSource music, music2, ambience, sfx;
+        AudioSource music, music2, ambience, sfx, detail, thunderSrc;
+        AudioClip[] drips;
         readonly Dictionary<string, AudioClip> clips = new Dictionary<string, AudioClip>();
         float musicTarget = 0.5f;
         AudioSource activeMusic;
@@ -26,7 +27,12 @@ namespace HalcyonNoir
             sfx.playOnAwake = false;
             activeMusic = music;
 
+            detail = gameObject.AddComponent<AudioSource>();
+            thunderSrc = gameObject.AddComponent<AudioSource>();
+            detail.playOnAwake = thunderSrc.playOnAwake = false;
             clips["rain"] = MakeRain();
+            clips["thunder"] = MakeThunder();
+            drips = new[] { MakeDrip(1100, 40), MakeDrip(1500, 55), MakeDrip(1850, 70), MakeDrip(900, 35), MakeDrip(2300, 90), MakeDrip(1300, 30) };
             clips["noir"] = MakeNoir();
             clips["fight"] = MakeFight();
             clips["thump"] = MakeThump(55f, 0.5f, 0.9f);
@@ -50,6 +56,7 @@ namespace HalcyonNoir
             activeMusic.volume = Mathf.MoveTowards(activeMusic.volume, musicTarget * MasterVolume, Time.unscaledDeltaTime * 0.35f);
             other.volume = Mathf.MoveTowards(other.volume, 0, Time.unscaledDeltaTime * 0.5f);
             if (other.volume <= 0 && other.isPlaying) other.Stop();
+            RainDetail();
         }
 
         public void PlayMusic(string name, float volume = 0.45f)
@@ -104,33 +111,88 @@ namespace HalcyonNoir
             return o;
         }
 
+        // A 20-second rain bed with slow gusts: heavier, lighter, heavier. No drips are baked in, so
+        // there's nothing distinctive for the ear to catch repeating. Drips and distant thunder are
+        // scheduled at random while it plays (see RainDetail), so they never fall in the same place twice.
         AudioClip MakeRain()
         {
-            int n = SR * 4 + SR / 2;
+            int n = SR * 21;
             var d = new float[n];
-            float lp = 0, lp2 = 0;
+            float lp = 0, lp2 = 0, hp = 0, gustPh = 0, gustPh2 = 0;
             for (int i = 0; i < n; i++)
             {
+                float t = i / (float)SR;
                 lp += (Noise() - lp) * 0.35f;
                 lp2 += (lp - lp2) * 0.2f;
-                float hiss = (lp - lp2) * 0.55f + lp2 * 0.35f;
-                d[i] = hiss;
+                hp += (Noise() - hp) * 0.8f;
+                // two slow, unrelated swells; their sum never quite repeats inside the clip
+                gustPh = t / 21f * 2 * Mathf.PI * 2;
+                gustPh2 = t / 21f * 2 * Mathf.PI * 3;
+                float gust = 0.82f + 0.12f * Mathf.Sin(gustPh) + 0.07f * Mathf.Sin(gustPh2 + 1.3f);
+                float hiss = (lp - lp2) * 0.55f + lp2 * 0.35f + (Noise() - hp) * 0.05f;
+                // a sparse spatter of tiny ticks (individual drops on stone), too dense to pick out one by one
+                if (rng.NextDouble() < 0.0025) hiss += Noise() * 0.25f;
+                d[i] = hiss * gust;
             }
-            // occasional drips on the awning
-            for (int k = 0; k < 40; k++)
+            return Clip("rain", Loopify(d, SR));
+        }
+
+        AudioClip MakeDrip(float f, float decay)
+        {
+            int n = (int)(0.25f * SR);
+            var d = new float[n];
+            for (int j = 0; j < n; j++)
             {
-                int at = rng.Next(n - 2000);
-                float f = 900 + (float)rng.NextDouble() * 1400;
-                for (int j = 0; j < 1600; j++) d[at + j] += Mathf.Sin(2 * Mathf.PI * f * j / SR) * Mathf.Exp(-j / 220f) * 0.12f;
+                float t = j / (float)SR;
+                float sweep = f * (1 + 0.35f * Mathf.Exp(-t * 60));   // the little upward "plink" of a drop
+                d[j] = Mathf.Sin(2 * Mathf.PI * sweep * t) * Mathf.Exp(-t * decay) * 0.5f;
             }
-            return Clip("rain", Loopify(d, SR / 2));
+            return Clip("drip", d);
+        }
+
+        AudioClip MakeThunder()
+        {
+            int n = (int)(7f * SR);
+            var d = new float[n];
+            float lp = 0, lp2 = 0;
+            for (int j = 0; j < n; j++)
+            {
+                float t = j / (float)SR;
+                lp += (Noise() - lp) * 0.03f;
+                lp2 += (lp - lp2) * 0.04f;
+                // a far-off roll: swells and crackles that die away
+                float env = Mathf.Min(1, t * 1.5f) * Mathf.Exp(-t * 0.55f) * (0.6f + 0.4f * Mathf.PerlinNoise(t * 3f, 0.3f));
+                d[j] = lp2 * 6f * env;
+            }
+            return Clip("thunder", d);
+        }
+
+        // Random drips and the odd roll of thunder over the rain bed.
+        float nextDrip, nextThunder = 18f;
+        void RainDetail()
+        {
+            if (ambience.clip == null || ambience.clip.name != "rain" || !ambience.isPlaying) return;
+            float now = Time.unscaledTime;
+            float level = ambience.volume;
+            if (now >= nextDrip)
+            {
+                nextDrip = now + Random.Range(0.12f, 1.4f);
+                detail.pitch = Random.Range(0.8f, 1.35f);
+                detail.PlayOneShot(drips[Random.Range(0, drips.Length)], Random.Range(0.08f, 0.3f) * level);
+            }
+            if (now >= nextThunder)
+            {
+                nextThunder = now + Random.Range(28f, 75f);
+                thunderSrc.pitch = Random.Range(0.7f, 1.1f);
+                thunderSrc.PlayOneShot(clips["thunder"], Random.Range(0.35f, 0.7f) * level);
+            }
         }
 
         // Slow minor-key jazz: soft electric piano chords, walking bass, brushed snare.
         AudioClip MakeNoir()
         {
             float bpm = 66, beat = 60f / bpm;
-            int bars = 8, beatsPerBar = 4;
+            int bars = 16, beatsPerBar = 4;   // two eight-bar halves: A, then a darker B with its own melody
             float len = bars * beatsPerBar * beat;
             int n = (int)(len * SR) + SR;
             var d = new float[n];
@@ -140,12 +202,19 @@ namespace HalcyonNoir
             int[][] bass = {
                 new[] { 45, 48, 52, 50 }, new[] { 41, 45, 48, 47 }, new[] { 38, 41, 45, 44 }, new[] { 40, 44, 47, 44 },
                 new[] { 45, 43, 41, 40 }, new[] { 43, 47, 50, 47 }, new[] { 41, 45, 48, 45 }, new[] { 40, 44, 47, 40 } };
+            // B half: Am7, Dm9, G7, Cmaj7, Fmaj7, Bm7b5, E7, E7b9
+            int[][] chordsB = {
+                new[] { 57, 60, 64, 67 }, new[] { 50, 53, 57, 60, 64 }, new[] { 55, 59, 62, 65 }, new[] { 52, 55, 59, 60 },
+                new[] { 53, 57, 60, 64 }, new[] { 50, 53, 57, 59 }, new[] { 52, 56, 59, 62 }, new[] { 52, 56, 59, 62, 65 } };
+            int[][] bassB = {
+                new[] { 45, 48, 52, 50 }, new[] { 38, 41, 45, 43 }, new[] { 43, 47, 50, 47 }, new[] { 48, 47, 45, 43 },
+                new[] { 41, 45, 48, 45 }, new[] { 47, 45, 44, 42 }, new[] { 40, 44, 47, 44 }, new[] { 40, 41, 44, 40 } };
             for (int b = 0; b < bars; b++)
             {
                 float t0 = b * beatsPerBar * beat;
                 // piano chord on beat 1 and an off-beat stab on the "and" of 3
                 foreach (var start in new[] { 0f, 2.5f })
-                    foreach (int note in chords[b])
+                    foreach (int note in (b < 8 ? chords : chordsB)[b % 8])
                     {
                         float f = Mtof(note);
                         int s0 = (int)((t0 + start * beat + note * 0.0007f) * SR);
@@ -162,7 +231,7 @@ namespace HalcyonNoir
                 // walking bass, one note per beat
                 for (int q = 0; q < 4; q++)
                 {
-                    float f = Mtof(bass[b][q] - 12);
+                    float f = Mtof((b < 8 ? bass : bassB)[b % 8][q] - 12);
                     int s0 = (int)((t0 + q * beat) * SR);
                     int dur = (int)(beat * 0.95f * SR);
                     for (int j = 0; j < dur && s0 + j < n; j++)
@@ -187,13 +256,16 @@ namespace HalcyonNoir
                     }
                 }
             }
-            // a lonely muted-trumpet-ish line over the last four bars
-            int[] mel = { 76, 74, 72, 71, 72, 69, 0, 0, 72, 74, 76, 79, 77, 76, 74, 0 };
-            for (int k = 0; k < mel.Length; k++)
+            // a lonely muted-trumpet-ish line over the last four bars of each half; the second answers the first
+            int[] melA = { 76, 74, 72, 71, 72, 69, 0, 0, 72, 74, 76, 79, 77, 76, 74, 0 };
+            int[] melB = { 72, 71, 69, 0, 76, 74, 72, 71, 69, 68, 69, 71, 69, 0, 0, 0 };
+            for (int k = 0; k < 32; k++)
             {
-                if (mel[k] == 0) continue;
-                float f = Mtof(mel[k] - 12);
-                int s0 = (int)((4 * beatsPerBar * beat + k * beat) * SR);
+                int note = k < 16 ? melA[k] : melB[k - 16];
+                if (note == 0) continue;
+                float f = Mtof(note - 12);
+                int startBar = k < 16 ? 4 : 12;
+                int s0 = (int)((startBar * beatsPerBar * beat + (k % 16) * beat) * SR);
                 int dur = (int)(beat * 1.05f * SR);
                 for (int j = 0; j < dur && s0 + j < n; j++)
                 {
@@ -212,11 +284,11 @@ namespace HalcyonNoir
         AudioClip MakeFight()
         {
             float bpm = 132, beat = 60f / bpm;
-            int bars = 8;
+            int bars = 16;   // A, then a B half that climbs and hits harder
             float len = bars * 4 * beat;
             int n = (int)(len * SR) + SR / 2;
             var d = new float[n];
-            int[] roots = { 45, 45, 41, 43, 45, 45, 48, 47 };
+            int[] roots = { 45, 45, 41, 43, 45, 45, 48, 47, 41, 41, 43, 45, 48, 47, 45, 44 };
             for (int b = 0; b < bars; b++)
             {
                 float t0 = b * 4 * beat;
@@ -246,7 +318,9 @@ namespace HalcyonNoir
                         d[s0 + j] += Mathf.Sin(2 * Mathf.PI * f * t) * Mathf.Exp(-t * 7) * 0.35f;
                     }
                 }
-                foreach (float k in new[] { 1f, 3f })
+                // the last bar of each half ends in a snare fill, so the loop point reads as a turnaround
+                var snares = b % 8 == 7 ? new[] { 1f, 2f, 2.5f, 3f, 3.25f, 3.5f, 3.75f } : new[] { 1f, 3f };
+                foreach (float k in snares)
                 {
                     int s0 = (int)((t0 + k * beat) * SR);
                     for (int j = 0; j < SR * 0.22f && s0 + j < n; j++)
@@ -256,7 +330,7 @@ namespace HalcyonNoir
                     }
                 }
                 // brass stab: a heavy minor chord on beat 1 of every other bar
-                if (b % 2 == 0)
+                if (b % 2 == 0 || b >= 8)
                 {
                     int[] chord = { roots[b], roots[b] + 3, roots[b] + 7, roots[b] + 12 };
                     foreach (int note in chord)

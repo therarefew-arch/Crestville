@@ -7,7 +7,7 @@ namespace HalcyonNoir
 {
     public static class Game
     {
-        public const string Version = "v0.0.03";
+        public const string Version = "v0.0.04";
         public static bool Paused;
     }
 
@@ -33,6 +33,8 @@ namespace HalcyonNoir
             var go = new GameObject("Director");
             go.AddComponent<GameDirector>();
             if (DevArgs.ShotDir != null) go.AddComponent<DevShots>();
+            // smoke tests run unattended: keep going when the window loses focus (normal play still pauses)
+            if (DevArgs.ShotDir != null || DevArgs.Auto || DevArgs.SkipToFight) Application.runInBackground = true;
         }
     }
 
@@ -47,7 +49,11 @@ namespace HalcyonNoir
         static int Index(string k) => System.Array.IndexOf(Args, k);
         static string Value(string k) { int i = Index(k); return i >= 0 && i + 1 < Args.Length ? Args[i + 1] : null; }
         public static bool SkipToFight => Index("-hn-fight") >= 0;
+        public static bool Auto => Index("-hn-auto") >= 0;
+        public static bool CallIn => Index("-hn-callin") >= 0;   // jump straight to calling the Graven (auto-advances)
         public static string ShotDir => Value("-hn-shots");
+        public static float ShotEvery => float.TryParse(Value("-hn-shot-every"), System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var s) && s > 0.2f ? s : 3f;
         public static float QuitAfter => float.TryParse(Value("-hn-quit"), System.Globalization.NumberStyles.Float,
             System.Globalization.CultureInfo.InvariantCulture, out var f) ? f : 0;
     }
@@ -61,7 +67,7 @@ namespace HalcyonNoir
             int n = 0;
             while (true)
             {
-                yield return new WaitForSecondsRealtime(3f);
+                yield return new WaitForSecondsRealtime(DevArgs.ShotEvery);
                 string path = System.IO.Path.Combine(DevArgs.ShotDir, $"shot_{n++:000}.png");
                 ScreenCapture.CaptureScreenshot(path);
                 Debug.Log($"[DevShots] {Time.realtimeSinceStartup:0.0}s fps~{1f / Mathf.Max(0.0001f, Time.smoothDeltaTime):0} -> {path}");
@@ -96,7 +102,7 @@ namespace HalcyonNoir
         }
     }
 
-    public class GameDirector : MonoBehaviour
+    public partial class GameDirector : MonoBehaviour
     {
         UI ui;
         City city;
@@ -107,7 +113,8 @@ namespace HalcyonNoir
         GravenController graven;
         BossController boss;
 
-        enum Phase { Story, Explore, Fight }
+        enum Phase { Story, Explore, Brawl, Fight }
+        ParticleSystem rain;
         Phase phase = Phase.Story;
         bool busy;              // a conversation or cutscene is running
         bool restartRequested;
@@ -148,7 +155,7 @@ namespace HalcyonNoir
             city = new City();
             city.BuildStreet();
             city.BuildArena();
-            City.MakeRain(cam.transform);
+            rain = City.MakeRain(cam.transform);
 
             player = PlayerMotor.Make(city.Root, city.PlayerSpawn, 90);
             orbit = cam.gameObject.AddComponent<OrbitCamera>();
@@ -164,6 +171,7 @@ namespace HalcyonNoir
 
             ui.Black = 1;
             StartCoroutine(Run());
+            if (DevArgs.Auto) StartCoroutine(AutoPlay());
         }
 
         void Quit()
@@ -201,7 +209,8 @@ namespace HalcyonNoir
             }
             UpdateCursor();
             orbit.Control = !Game.Paused && !busy;
-            player.CanMove = !Game.Paused && !busy && phase == Phase.Explore;
+            player.CanMove = !Game.Paused && !busy && (phase == Phase.Explore || phase == Phase.Brawl);
+            if (phase == Phase.Explore && !Game.Paused && !busy && ShouldAmbush()) StartCoroutine(Ambush());
 
             if (phase == Phase.Explore && !Game.Paused)
             {
@@ -288,16 +297,32 @@ namespace HalcyonNoir
         void Shot(Vector3 pos, Vector3 look) { orbit.Cinematic = true; orbit.CinePos = pos; orbit.CineLook = look; }
         void EndShot() { orbit.Cinematic = false; }
 
-        // An over-the-shoulder shot for a conversation with someone.
+        IEnumerator RiseFromHarbor(Transform t, Vector3 to, float dur)
+        {
+            var from = t.position;
+            for (float k = 0; k < 1 && t != null; k += Time.unscaledDeltaTime / dur)
+            {
+                t.position = Vector3.Lerp(from, to, Mathf.SmoothStep(0, 1, k));
+                if (Random.value < 0.25f) Fx.I?.Splash(t.position + new Vector3(Random.Range(-10, 10), -t.position.y - 2, Random.Range(-8, 8)), 10, 3);
+                yield return null;
+            }
+        }
+
+        // A loose over-the-shoulder two-shot for a conversation. Vane sits at the edge of frame instead of
+        // filling it, and the camera goes on the street side so storefront posts don't block the other person.
         void TalkShot(Figure who)
         {
             player.FaceTowards(who.transform.position);
             var d = who.transform.position - player.transform.position; d.y = 0;
-            var face = Quaternion.LookRotation(-d.normalized);
-            who.transform.rotation = face;
-            var dir = d.normalized;
+            var dir = d.sqrMagnitude > 0.01f ? d.normalized : player.transform.forward;
+            who.transform.rotation = Quaternion.LookRotation(-dir);
             var right = Vector3.Cross(Vector3.up, dir);
-            Shot(player.transform.position - dir * 1.6f + right * 0.8f + Vector3.up * 1.75f, who.transform.position + Vector3.up * 1.6f);
+            var mid = (player.transform.position + who.transform.position) * 0.5f;
+            Vector3 Cam(float side) => player.transform.position - dir * 2.4f + right * (side * 1.7f) + Vector3.up * 1.6f;
+            // the street runs along x at z = 0, the buildings sit at |z| > 10: keep the camera nearer the street
+            float s = Mathf.Abs(Cam(1).z) <= Mathf.Abs(Cam(-1).z) ? 1 : -1;
+            var look = Vector3.Lerp(mid, who.transform.position, 0.45f) + Vector3.up * 1.45f;
+            Shot(Cam(s), look);
         }
 
         void Clue(string title, string body)
@@ -313,7 +338,7 @@ namespace HalcyonNoir
 
         void UpdateFooter()
         {
-            ui.NotebookFooter = $"Clues found: {ClueCount} of 5." + (CanDeduce ? "   You can make your deduction at the end of the pier. You only get one chance." : "");
+            ui.NotebookFooter = $"Clues found: {ClueCount} of 5.   Off the record: {Extras} of 2." +(CanDeduce ? "   You can make your deduction at the end of the pier. You only get one chance." : "");
         }
 
         void SetObjective()
@@ -380,6 +405,20 @@ namespace HalcyonNoir
                 yield return StartFight();
                 yield break;
             }
+            if (DevArgs.CallIn)
+            {
+                outcome = 2; ui.Sharp = true; trustCard = teoSketch = true;
+                StartCoroutine(AutoTalk());
+                In.BotSummon = true;
+                var at = new Vector3(54, 0, -0.3f);
+                player.Cc.enabled = false; player.transform.position = at; player.Cc.enabled = true;
+                ui.Letterbox = 1;
+                StartCoroutine(Fade(0, 1f));
+                yield return CallGraven(at);
+                In.BotSummon = false;
+                yield return StartFight();
+                yield break;
+            }
             Sound.I?.PlayMusic("noir", 0.4f);
             yield return Wait(0.8f);
             yield return Narrate(
@@ -391,7 +430,7 @@ namespace HalcyonNoir
             Shot(city.PlayerSpawn + new Vector3(-6, 6, -5), city.PlayerSpawn + new Vector3(12, 3, 4));
             cam.transform.position = orbit.CinePos;
             StartCoroutine(Fade(0, 2.5f));
-            yield return Card("HALCYON NOIR", "Episode 1  —  Low Tide", 2.5f);
+            yield return Card("HALCYON NOIR", $"Episode 1  —  Low Tide\n<size=20>{Game.Version}</size>", 2.5f);
             EndShot();
             yield return Letterbox(0, 0.8f);
             phase = Phase.Explore;
@@ -571,6 +610,7 @@ namespace HalcyonNoir
             var g = Find("gate").transform.position;
             Shot(g + new Vector3(2.5f, 2.2f, 3f), g + new Vector3(0, 1.4f, -1.5f));
             yield return Wait(0.6f);
+            if (sawGate && !gateOpened) { yield return OfferLockpick(); yield break; }
             yield return Narrate(
                 "The tide gate. Iron, taller than a house, rusted shut since the Blank. Everybody in the harbor says so.",
                 "But the lock had been scraped clean. Fresh metal, bright as a new coin.");
@@ -581,6 +621,8 @@ namespace HalcyonNoir
                 sawGate = true;
                 Clue("The tide gate", "Rusted shut for forty years, but the lock has been scraped clean, recently. The keyhole is stamped with a wave." + (haveTicket ? " Same as Teo's key." : ""));
             }
+            // the lock itself: optional, and it can go wrong (see Lockpick in OnFootPlay.cs)
+            if (!gateOpened) yield return OfferLockpick();
         }
 
         IEnumerator Deduction()
@@ -639,34 +681,20 @@ namespace HalcyonNoir
             Shot(gil.transform.position + new Vector3(-2.5f, 1.8f, -2), gil.transform.position + Vector3.up * 1.5f);
             gil.transform.rotation = Quaternion.LookRotation(Vector3.right);
             yield return Say("Gil", "No. No, no, no. Not again.");
-            Shot(p + new Vector3(-3, 1.5f, 0), city.HarborGlowPos + Vector3.up * 30);
+            // Vane small in the corner of frame, the thing rising out of the water filling the rest
+            Shot(p + new Vector3(-7, 1.2f, 4.5f), city.HarborGlowPos + Vector3.up * 16);
             Sound.I?.Play("roar", 0.7f, 0.6f);
             Fx.I?.Shake(1.2f, 2.5f);
+            // the Tidewarden rising out in the harbor, seen from the pier (an inert copy; the fight makes its own)
+            var risen = BossController.Make(city.HarborGlowPos + Vector3.down * 24, Quaternion.LookRotation(Vector3.left));
+            StartCoroutine(RiseFromHarbor(risen.transform, city.HarborGlowPos + Vector3.down * 3, 5f));
             yield return Narrate("Something was standing up out there. Something the size of a building, with a lantern where its heart should be.");
             yield return Say("Vane", "Graven. Wake up.");
             yield return Narrate("I've never asked why it answers to me. Some questions you don't ask when the answer is a hundred feet tall.");
-
-            // summon
-            float hold = 0;
-            while (hold < 1)
-            {
-                if (!Game.Paused)
-                {
-                    if (In.SummonHeld) hold += Time.unscaledDeltaTime / 1.4f;
-                    else hold = Mathf.Max(0, hold - Time.unscaledDeltaTime);
-                }
-                int bars = Mathf.RoundToInt(hold * 12);
-                ui.HintLine = "Hold  [G]  to call the Graven     " + new string('|', bars) + new string('.', 12 - bars);
-                if (Random.value < hold * 0.2f) Fx.I?.Shake(0.3f + hold, 0.3f);
-                yield return null;
-            }
-            ui.HintLine = null;
-            Sound.I?.Play("bigstep", 1f, 0.6f);
-            Sound.I?.Play("steam", 1f, 0.7f);
-            Fx.I?.Shake(3f, 1f);
-            Fx.I?.Flash(new Color(1f, 0.7f, 0.3f, 0.6f), 0.5f);
-            yield return Fade(1, 0.8f);
-            yield return Wait(0.6f);
+            // the call: Vane raises the link band, the Graven comes up out of the harbor, takes him aboard,
+            // and the cockpit wakes up around him (see CallIn.cs)
+            yield return CallGraven(p);
+            if (risen != null) Destroy(risen.gameObject);
             yield return StartFight();
         }
 
@@ -675,7 +703,7 @@ namespace HalcyonNoir
             phase = Phase.Fight;
             player.gameObject.SetActive(false);
             ui.Objective = null;
-            float hpMult = outcome == 2 ? 1f : outcome == 1 ? 0.9f : 0.8f;
+            float hpMult = (outcome == 2 ? 1f : outcome == 1 ? 0.9f : 0.8f) * LinkSync;
 
             graven = GravenController.Make(city.GravenSpawn, Quaternion.LookRotation(Vector3.right));
             boss = BossController.Make(city.BossSpawn + Vector3.down * 26, Quaternion.LookRotation(Vector3.left));
@@ -742,7 +770,7 @@ namespace HalcyonNoir
         void ResetFight()
         {
             attempts++;
-            float hpMult = outcome == 2 ? 1f : outcome == 1 ? 0.9f : 0.8f;
+            float hpMult = (outcome == 2 ? 1f : outcome == 1 ? 0.9f : 0.8f) * LinkSync;
             var cc = graven.GetComponent<CharacterController>();
             cc.enabled = false;
             graven.transform.SetPositionAndRotation(city.GravenSpawn, Quaternion.LookRotation(Vector3.right));
@@ -857,6 +885,7 @@ namespace HalcyonNoir
             graven.gameObject.SetActive(false);
             boss.gameObject.SetActive(false);
             player.gameObject.SetActive(true);
+            ResetVanePose();
             var mara = city.People["mara"];
             var cc = player.Cc; cc.enabled = false;
             player.transform.position = mara.transform.position + new Vector3(0, 0, -1.8f);

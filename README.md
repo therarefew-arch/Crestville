@@ -4,7 +4,7 @@ An original noir giant-robot game for PC, made in Unity. A rain-soaked art deco 
 forty years ago. You play Elias Vane, who finds lost things for a living, and who has a very large
 machine sleeping under the old foundry.
 
-**Current version: v0.0.03.** The version is shown on the pause screen.
+**Current version: v0.0.04.** The version is shown in the bottom-right corner of the screen, on the title card and on the pause screen. Every update bumps it by one (see CHANGELOG.md).
 
 This first build is a playable vertical slice of **Episode 1: Low Tide**. It plays in this order:
 
@@ -41,6 +41,16 @@ The scene is already added to the build list.
 | 1–4 or click | Pick a dialogue choice |
 | Tab | Notebook |
 | Esc | Pause (mouse sensitivity, restart fight, quit) |
+| G (hold) | Call the Graven, when the prompt appears |
+
+| Street fight (on foot) | |
+|---|---|
+| Left mouse | Jab (the third in a row is a hook) |
+| Right mouse | Haymaker (slow; staggers) |
+| Shift (hold) | Guard. Tap it as a fist glints to **parry**. |
+| Space | Dodge |
+
+A pale glint on a man's fist means his swing is coming. Hitting him mid-windup breaks it.
 
 | The Graven | |
 |---|---|
