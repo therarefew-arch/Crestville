@@ -4,7 +4,7 @@ An original noir giant-robot game for PC, made in Unity. A rain-soaked art deco 
 forty years ago. You play Elias Vane, who finds lost things for a living, and who has a very large
 machine sleeping under the old foundry.
 
-**Current version: v0.0.02.** The version is shown on the pause screen.
+**Current version: v0.0.03.** The version is shown on the pause screen.
 
 This first build is a playable vertical slice of **Episode 1: Low Tide**. It plays in this order:
 

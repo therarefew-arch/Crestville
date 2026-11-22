@@ -46,14 +46,25 @@ namespace HalcyonNoir
         GUIStyle sTitle, sSub, sBody, sNarr, sSpeaker, sSmall, sPrompt, sChoice, sNum, sBig, sCenter;
         Font serif, sans;
 
-        public static Font LoadFont(int size)
+        static readonly string[] SerifNames = { "Georgia", "Palatino Linotype", "Times New Roman", "Liberation Serif", "DejaVu Serif" };
+        static readonly string[] SansNames = { "Futura", "Century Gothic", "Gill Sans MT", "Segoe UI", "Helvetica", "Liberation Sans", "DejaVu Sans" };
+
+        // Pass only a font that is actually installed. On Unity 6.x, handing CreateDynamicFontFromOSFont a
+        // list whose first names are missing gives a font that draws nothing, and IMGUI then shows the
+        // previous label's text in its place.
+        static Font OsFont(string[] preferred, int size)
         {
-            Font f = null;
-            try { f = Font.CreateDynamicFontFromOSFont(new[] { "Georgia", "Palatino Linotype", "Times New Roman", "Liberation Serif", "DejaVu Serif" }, size); }
-            catch { f = null; }
-            if (f == null) f = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            return f;
+            try
+            {
+                var installed = new HashSet<string>(Font.GetOSInstalledFontNames(), System.StringComparer.OrdinalIgnoreCase);
+                foreach (var n in preferred)
+                    if (installed.Contains(n)) return Font.CreateDynamicFontFromOSFont(n, size);
+            }
+            catch { }
+            return null;
         }
+
+        public static Font LoadFont(int size) => OsFont(SerifNames, size) ?? Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 
         void Awake()
         {
@@ -62,9 +73,7 @@ namespace HalcyonNoir
             vignette = MakeVignette();
             grain = MakeGrain();
             serif = LoadFont(32);
-            try { sans = Font.CreateDynamicFontFromOSFont(new[] { "Futura", "Century Gothic", "Gill Sans MT", "Segoe UI", "Helvetica", "Liberation Sans", "DejaVu Sans" }, 28); }
-            catch { sans = serif; }
-            if (sans == null) sans = serif;
+            sans = OsFont(SansNames, 28) ?? serif;
         }
 
         static Texture2D Tex(Color c)
@@ -159,11 +168,38 @@ namespace HalcyonNoir
             }
         }
 
+        // Layout is authored on a 1920x1080 virtual canvas. We scale every rect and font size by hand
+        // instead of using GUI.matrix: on Unity 6.x the IMGUI text cache returns stale strings at the
+        // wrong positions when a scale matrix is set (labels showed previous frames' text).
+        float k = 1;
+        Rect R(Rect r) => new Rect(r.x * k, r.y * k, r.width * k, r.height * k);
+        Vector2 Mouse => Event.current.mousePosition / k;
+        static readonly System.Text.RegularExpressions.Regex sizeTag = new System.Text.RegularExpressions.Regex(@"<size=(\d+)>");
+        string ScaleTags(string s) => s.IndexOf("<size=", System.StringComparison.Ordinal) < 0 ? s
+            : sizeTag.Replace(s, m => $"<size={Mathf.Max(1, Mathf.RoundToInt(int.Parse(m.Groups[1].Value) * k))}>");
+
+        void Lbl(Rect r, string s, GUIStyle st)
+        {
+            int fs = st.fontSize;
+            st.fontSize = Mathf.Max(1, Mathf.RoundToInt(fs * k));
+            GUI.Label(R(r), ScaleTags(s), st);
+            st.fontSize = fs;
+        }
+
+        float CalcHeight(GUIStyle st, string s, float width)
+        {
+            int fs = st.fontSize;
+            st.fontSize = Mathf.Max(1, Mathf.RoundToInt(fs * k));
+            float h = st.CalcHeight(new GUIContent(ScaleTags(s)), width * k) / k;
+            st.fontSize = fs;
+            return h;
+        }
+
         void Fill(Rect r, Color c)
         {
             var old = GUI.color;
             GUI.color = c;
-            GUI.DrawTexture(r, white);
+            GUI.DrawTexture(R(r), white);
             GUI.color = old;
         }
 
@@ -179,9 +215,9 @@ namespace HalcyonNoir
         {
             var old = GUI.color;
             GUI.color = new Color(0, 0, 0, alpha * 0.8f);
-            GUI.Label(new Rect(r.x + 2, r.y + 3, r.width, r.height), s, st);
+            Lbl(new Rect(r.x + 2, r.y + 3, r.width, r.height), s, st);
             GUI.color = new Color(1, 1, 1, alpha);
-            GUI.Label(r, s, st);
+            Lbl(r, s, st);
             GUI.color = old;
         }
 
@@ -190,9 +226,8 @@ namespace HalcyonNoir
         void OnGUI()
         {
             Styles();
-            float scale = Screen.height / H;
+            float scale = k = Screen.height / H;
             float vw = Screen.width / scale; // virtual width at 1080p height
-            GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(scale, scale, 1));
             var cam = Camera.main;
 
             // floating damage numbers
@@ -209,9 +244,9 @@ namespace HalcyonNoir
                 }
 
             // film look: vignette and grain
-            GUI.DrawTexture(new Rect(0, 0, vw, H), vignette, ScaleMode.StretchToFill);
+            GUI.DrawTexture(R(new Rect(0, 0, vw, H)), vignette, ScaleMode.StretchToFill);
             var gr = new Rect(Random.value, Random.value, vw / 256f, H / 256f);
-            GUI.DrawTextureWithTexCoords(new Rect(0, 0, vw, H), grain, gr);
+            GUI.DrawTextureWithTexCoords(R(new Rect(0, 0, vw, H)), grain, gr);
 
             // objective
             if (!string.IsNullOrEmpty(Objective) && Letterbox < 0.5f && !MechHud)
@@ -267,7 +302,7 @@ namespace HalcyonNoir
                     Text(new Rect(box.x + 40, box.y + 62, box.width - 80, 180), s, sBody);
                 }
                 if (!Typing && (Choices == null || Choices.Count == 0))
-                    Text(new Rect(vw / 2 + 600, H - 92, 160, 40), "▼", sPrompt, 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 6));
+                    Text(new Rect(vw / 2 + 560, H - 92, 200, 40), "<size=22>[E]  ›</size>", sPrompt, 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 6));
             }
 
             // choices
@@ -277,11 +312,11 @@ namespace HalcyonNoir
                 for (int i = 0; i < Choices.Count; i++)
                 {
                     var r = new Rect(vw / 2 - 560, y0 + i * (h + 8), 1120, h);
-                    bool hover = r.Contains(Event.current.mousePosition);
+                    bool hover = r.Contains(Mouse);
                     Fill(r, hover ? new Color(0.2f, 0.14f, 0.08f, 0.92f) : new Color(0.03f, 0.03f, 0.05f, 0.88f));
                     Fill(new Rect(r.x, r.y, 4, r.height), new Color(0.95f, 0.72f, 0.38f, hover ? 1f : 0.5f));
                     Text(new Rect(r.x + 24, r.y, r.width - 40, r.height), $"<b>{i + 1}.</b>  {Choices[i]}", sChoice);
-                    if (GUI.Button(r, GUIContent.none, GUIStyle.none)) Picked = i;
+                    if (GUI.Button(R(r), GUIContent.none, GUIStyle.none)) Picked = i;
                 }
             }
 
@@ -309,18 +344,18 @@ namespace HalcyonNoir
             var h = new GUIStyle(sTitle) { fontSize = 44, alignment = TextAnchor.UpperLeft }; h.normal.textColor = ink;
             var b = new GUIStyle(sBody) { fontSize = 26 }; b.normal.textColor = ink;
             var t = new GUIStyle(sSpeaker) { fontSize = 24 }; t.normal.textColor = new Color(0.55f, 0.2f, 0.15f);
-            GUI.Label(new Rect(r.x + 90, r.y + 30, 1000, 60), "NOTEBOOK — The Quill Case", h);
+            Lbl(new Rect(r.x + 90, r.y + 30, 1000, 60), "NOTEBOOK — The Quill Case", h);
             float y = r.y + 110;
-            if (NotebookEntries.Count == 0) GUI.Label(new Rect(r.x + 90, y, 1100, 40), "Nothing yet. Talk to people. Look closely.", b);
+            if (NotebookEntries.Count == 0) Lbl(new Rect(r.x + 90, y, 1100, 40), "Nothing yet. Talk to people. Look closely.", b);
             foreach (var e in NotebookEntries)
             {
-                GUI.Label(new Rect(r.x + 90, y, 1100, 34), e.title.ToUpperInvariant(), t);
-                var bh = b.CalcHeight(new GUIContent(e.body), 1100);
-                GUI.Label(new Rect(r.x + 90, y + 34, 1100, bh), e.body, b);
+                Lbl(new Rect(r.x + 90, y, 1100, 34), e.title.ToUpperInvariant(), t);
+                var bh = CalcHeight(b, e.body, 1100);
+                Lbl(new Rect(r.x + 90, y + 34, 1100, bh), e.body, b);
                 y += 44 + bh;
             }
             var f = new GUIStyle(sSmall); f.normal.textColor = new Color(0.35f, 0.3f, 0.28f);
-            GUI.Label(new Rect(r.x + 90, r.yMax - 70, 1100, 50), NotebookFooter ?? "[Tab] Close", f);
+            Lbl(new Rect(r.x + 90, r.yMax - 70, 1100, 50), NotebookFooter ?? "[Tab] Close", f);
         }
 
         void DrawMechHud(float vw)
@@ -382,11 +417,11 @@ namespace HalcyonNoir
 
         bool Btn(Rect r, string label)
         {
-            bool hover = r.Contains(Event.current.mousePosition);
+            bool hover = r.Contains(Mouse);
             Fill(r, hover ? new Color(0.25f, 0.17f, 0.1f, 0.95f) : new Color(0.08f, 0.08f, 0.1f, 0.95f));
             Fill(new Rect(r.x, r.yMax - 3, r.width, 3), new Color(0.95f, 0.72f, 0.38f, hover ? 1 : 0.4f));
             Text(r, label, sPrompt);
-            return GUI.Button(r, GUIContent.none, GUIStyle.none);
+            return GUI.Button(R(r), GUIContent.none, GUIStyle.none);
         }
     }
 }

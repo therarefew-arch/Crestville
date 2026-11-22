@@ -360,26 +360,75 @@ namespace HalcyonNoir
                 holder.SetParent(Root, false);
                 holder.position = p;
                 holder.LookAt(new Vector3(A.x - 15, 0, A.z));
-                Tower(Vector3.zero, R(22, 36), 30, R(45, 110), false, 2.2f, holder);
+                // human-scale floors on tall towers, so the 20-unit machines read as giants in a real city
+                Tower(Vector3.zero, R(22, 36), 30, R(90, 220), false, 1f, holder);
             }
             // skyline across the water
-            for (int i = 0; i < 20; i++) Tower(A + new Vector3(R(220, 420), 0, R(-300, 300)), R(30, 60), 30, R(80, 200), true, 3f);
+            for (int i = 0; i < 20; i++) Tower(A + new Vector3(R(220, 420), 0, R(-300, 300)), R(30, 60), 30, R(160, 380), true, 1.3f);
             // floodlights
             for (int i = 0; i < 6; i++)
             {
                 float z = -75 + i * 30;
                 var pos = A + new Vector3(-78, 0, z);
-                Lamp(pos, Root, 4f);
-                Build.PointLight(Root, pos + new Vector3(10, 14, 0), new Color(1f, 0.62f, 0.32f), 60, 2.5f);
+                Lamp(pos, Root, 1.7f);   // a tall street lamp: knee-to-hip height on the Graven
+                Build.PointLight(Root, pos + new Vector3(10, 14, 0), new Color(1f, 0.62f, 0.32f), 60, 3f);
             }
-            // cranes and crates along the waterfront
-            for (int i = 0; i < 5; i++)
+            // dockside gantry cranes, kept to the flanks so the fight has room. They're the only things
+            // on the waterfront that tower over the Graven, and they should read as cranes, not lamp posts.
+            foreach (float z in new[] { -132f, -90f, 90f, 132f })
+                GantryCrane(A + new Vector3(WaterEdgeX - 5, 0, z));
+
+            // shipping containers: knee-high on a 20-unit machine, which sells the scale
+            var boxColors = new[] { new Color(0.45f, 0.18f, 0.12f), new Color(0.16f, 0.3f, 0.32f), new Color(0.5f, 0.38f, 0.16f),
+                                    new Color(0.2f, 0.22f, 0.32f), new Color(0.32f, 0.3f, 0.28f) };
+            var containerMats = new Material[boxColors.Length];
+            for (int i = 0; i < boxColors.Length; i++) containerMats[i] = Mats.Toon(boxColors[i]);
+            void Stack(Vector3 p, int high, float yaw)
             {
-                var c = A + new Vector3(WaterEdgeX - 6, 0, -80 + i * 40);
-                Box(c + new Vector3(0, 18, 0), new Vector3(2, 36, 2), metal, false);
-                Box(c + new Vector3(8, 36, 0), new Vector3(22, 1.5f, 1.5f), metal, false);
-                Box(c + new Vector3(-6, 1.5f, 6), new Vector3(6, 3, 3), Mats.Toon(new Color(0.45f, 0.18f, 0.12f)), true);
+                for (int h = 0; h < high; h++)
+                {
+                    var go = Box(p + Vector3.up * (1.3f + h * 2.6f), new Vector3(12, 2.6f, 2.5f), containerMats[rng.Next(containerMats.Length)], true);
+                    go.transform.rotation = Quaternion.Euler(0, yaw + R(-3, 3), 0);
+                }
             }
+            for (int i = 0; i < 7; i++)
+            {
+                Stack(A + new Vector3(-70 + i * 15 + R(-2, 2), 0, -84), rng.Next(1, 4), 0);
+                Stack(A + new Vector3(-70 + i * 15 + R(-2, 2), 0, 84), rng.Next(1, 4), 0);
+                if (rng.NextDouble() < 0.5) Stack(A + new Vector3(-70 + i * 15 + R(-2, 2), 0, -80.5f), rng.Next(1, 3), 0);
+                if (rng.NextDouble() < 0.5) Stack(A + new Vector3(-70 + i * 15 + R(-2, 2), 0, 80.5f), rng.Next(1, 3), 0);
+            }
+        }
+
+        // A dockside gantry crane, about 2.5x the Graven's height, with its boom out over the water.
+        void GantryCrane(Vector3 b)
+        {
+            var paint = Mats.Toon(new Color(0.38f, 0.2f, 0.12f), null, 0.1f);
+            const float H = 46;
+            for (int sx = -1; sx <= 1; sx += 2)
+                for (int sz = -1; sz <= 1; sz += 2)
+                    Box(b + new Vector3(sx * 5, H / 2, sz * 6), new Vector3(1.6f, H, 1.6f), paint, true);
+            // portal beams and cross bracing
+            for (int sz = -1; sz <= 1; sz += 2)
+            {
+                Box(b + new Vector3(0, 10, sz * 6), new Vector3(11.6f, 1.2f, 1.2f), paint, false);
+                Box(b + new Vector3(0, H, sz * 6), new Vector3(11.6f, 1.6f, 1.6f), paint, false);
+                var brace = Box(b + new Vector3(0, 28, sz * 6), new Vector3(0.7f, 25f, 0.7f), paint, false);
+                brace.transform.rotation = Quaternion.Euler(0, 0, 22);
+            }
+            for (int sx = -1; sx <= 1; sx += 2) Box(b + new Vector3(sx * 5, H, 0), new Vector3(1.6f, 1.6f, 13.6f), paint, false);
+            // machinery house, boom over the water and the counterweight arm behind
+            Box(b + new Vector3(-1, H + 4, 0), new Vector3(12, 6.5f, 10), paint, false);
+            Box(b + new Vector3(30, H + 2, 0), new Vector3(52, 2, 3), paint, false);
+            Box(b + new Vector3(-16, H + 2, 0), new Vector3(20, 2, 3), paint, false);
+            Box(b + new Vector3(-24, H - 1, 0), new Vector3(5, 5, 5), metal, false);
+            // operator cab and a hanging hook
+            Box(b + new Vector3(8, H - 2, 2.6f), new Vector3(3.2f, 3, 2.4f), metal, false);
+            Build.Part(Root, PrimitiveType.Cube, b + new Vector3(8.5f, H - 1.6f, 3.85f), new Vector3(2.4f, 1.2f, 0.1f), Mats.Glow(new Color(1f, 0.72f, 0.4f), 1.4f));
+            Box(b + new Vector3(44, H - 14, 0), new Vector3(0.25f, 28, 0.25f), metal, false);
+            Box(b + new Vector3(44, H - 28.5f, 0), new Vector3(2.4f, 1.2f, 2.4f), metal, false);
+            // warning beacon on the boom tip
+            Build.Part(Root, PrimitiveType.Sphere, b + new Vector3(55.5f, H + 3.4f, 0), Vector3.one * 0.9f, Mats.Glow(new Color(1f, 0.2f, 0.15f), 3f));
         }
 
         // Rain that follows the camera.

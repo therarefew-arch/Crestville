@@ -96,7 +96,7 @@ namespace HalcyonNoir
             {
                 LegL.localRotation = Quaternion.Slerp(LegL.localRotation, Quaternion.identity, Time.deltaTime * 8);
                 LegR.localRotation = Quaternion.Slerp(LegR.localRotation, Quaternion.identity, Time.deltaTime * 8);
-                float breathe = Mathf.Sin(t * 1.4f + GetInstanceID()) * 2f;
+                float breathe = Mathf.Sin(t * 1.4f + (GetHashCode() % 97)) * 2f;
                 ArmL.localEulerAngles = new Vector3(breathe, 0, 4);
                 ArmR.localEulerAngles = Smoking ? new Vector3(-95f + Mathf.Sin(t * 0.4f) * 25f, 20, -10) : new Vector3(-breathe, 0, -4);
                 Body.localPosition = Vector3.Lerp(Body.localPosition, Vector3.zero, Time.deltaTime * 6);

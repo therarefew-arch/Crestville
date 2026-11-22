@@ -7,7 +7,7 @@ namespace HalcyonNoir
 {
     public static class Game
     {
-        public const string Version = "v0.0.02";
+        public const string Version = "v0.0.03";
         public static bool Paused;
     }
 
@@ -28,9 +28,45 @@ namespace HalcyonNoir
 
         static void TryStart(Scene s)
         {
-            if (Object.FindFirstObjectByType<GameDirector>() != null) return;
-            if (s.name != "HalcyonNoir" && Object.FindFirstObjectByType<BootMarker>() == null) return;
-            new GameObject("Director").AddComponent<GameDirector>();
+            if (Object.FindAnyObjectByType<GameDirector>() != null) return;
+            if (s.name != "HalcyonNoir" && Object.FindAnyObjectByType<BootMarker>() == null) return;
+            var go = new GameObject("Director");
+            go.AddComponent<GameDirector>();
+            if (DevArgs.ShotDir != null) go.AddComponent<DevShots>();
+        }
+    }
+
+    // Command-line switches for automated smoke tests of a built player:
+    //   -hn-fight            skip the story and start the boss fight (Sharp outcome)
+    //   -hn-shots <dir>      save a screenshot every few seconds into <dir>
+    //   -hn-quit <seconds>   quit after this many seconds
+    public static class DevArgs
+    {
+        static string[] args;
+        static string[] Args => args ??= System.Environment.GetCommandLineArgs();
+        static int Index(string k) => System.Array.IndexOf(Args, k);
+        static string Value(string k) { int i = Index(k); return i >= 0 && i + 1 < Args.Length ? Args[i + 1] : null; }
+        public static bool SkipToFight => Index("-hn-fight") >= 0;
+        public static string ShotDir => Value("-hn-shots");
+        public static float QuitAfter => float.TryParse(Value("-hn-quit"), System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var f) ? f : 0;
+    }
+
+    public class DevShots : MonoBehaviour
+    {
+        IEnumerator Start()
+        {
+            System.IO.Directory.CreateDirectory(DevArgs.ShotDir);
+            float quit = DevArgs.QuitAfter;
+            int n = 0;
+            while (true)
+            {
+                yield return new WaitForSecondsRealtime(3f);
+                string path = System.IO.Path.Combine(DevArgs.ShotDir, $"shot_{n++:000}.png");
+                ScreenCapture.CaptureScreenshot(path);
+                Debug.Log($"[DevShots] {Time.realtimeSinceStartup:0.0}s fps~{1f / Mathf.Max(0.0001f, Time.smoothDeltaTime):0} -> {path}");
+                if (quit > 0 && Time.realtimeSinceStartup > quit) { yield return null; Application.Quit(); }
+            }
         }
     }
 
@@ -51,9 +87,10 @@ namespace HalcyonNoir
             var dir = d.sqrMagnitude > 1 ? d.normalized : A.forward;
             dir = Quaternion.Euler(0, yawOff, 0) * dir;
             var right = Vector3.Cross(Vector3.up, dir);
-            var want = A.position - dir * 40f + Vector3.up * 19f + right * 9f;
+            // over-the-shoulder: the Graven sits left of center so the enemy stays readable past it
+            var want = A.position - dir * 46f + Vector3.up * 21f + right * 17f;
             transform.position = Vector3.SmoothDamp(transform.position, want, ref vel, 0.25f, Mathf.Infinity, dt);
-            var look = Vector3.Lerp(A.position + Vector3.up * 12, B.position + Vector3.up * 8, 0.45f);
+            var look = Vector3.Lerp(A.position + Vector3.up * 12, B.position + Vector3.up * 8, 0.55f);
             transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(look - transform.position), 1 - Mathf.Exp(-dt * 6));
             if (Fx.I != null) transform.position += transform.rotation * Fx.I.ShakeOffset;
         }
@@ -79,7 +116,7 @@ namespace HalcyonNoir
         float fightStart;
 
         // case flags
-        bool metMara, askedLight, askedPeople, askedWhy, haveTicket, sawGouges, sawGate, gilLied, gilConfessed, deduced;
+        bool metMara, askedLight, askedPeople, askedWhy, haveTicket, sawGouges, sawGate, gilLied, gilConfessed;
         bool ostExtra;
 
         void Awake()
@@ -90,8 +127,10 @@ namespace HalcyonNoir
             Mats.Init();
 
             // clear template leftovers so our own camera and moon are in charge
+#pragma warning disable CS0618 // sort-mode overload is deprecated in 6.x but required on 6000.0
             foreach (var l in FindObjectsByType<Light>(FindObjectsSortMode.None))
                 if (l.type == LightType.Directional) Destroy(l.gameObject);
+#pragma warning restore CS0618
             cam = Camera.main;
             if (cam == null)
             {
@@ -201,7 +240,7 @@ namespace HalcyonNoir
             yield return null;
             while (true)
             {
-                if (!Game.Paused && In.Confirm)
+                if (!Game.Paused && (In.Confirm || (DevArgs.SkipToFight && !ui.Typing && (ui.Choices == null || ui.Choices.Count == 0) && Time.frameCount % 150 == 0)))
                 {
                     if (ui.Typing) ui.FinishTyping();
                     else break;
@@ -334,8 +373,14 @@ namespace HalcyonNoir
         IEnumerator Run()
         {
             Sound.I?.Ambience("rain", 0.55f);
-            Sound.I?.PlayMusic("noir", 0.4f);
             busy = true;
+            if (DevArgs.SkipToFight)
+            {
+                outcome = 2; ui.Sharp = true;
+                yield return StartFight();
+                yield break;
+            }
+            Sound.I?.PlayMusic("noir", 0.4f);
             yield return Wait(0.8f);
             yield return Narrate(
                 "Halcyon. Forty years ago, the whole city woke up on the same morning and couldn't remember a thing.",
@@ -540,7 +585,7 @@ namespace HalcyonNoir
 
         IEnumerator Deduction()
         {
-            deduced = true;
+            // deduction is one-shot; deductionState tracks it
             ui.Objective = null;
             var g = Find("gouges");
             g.Enabled = false;
