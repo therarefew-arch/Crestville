@@ -1,7 +1,11 @@
 # Changelog
 
+## v0.0.02
+- Renamed the game to Halcyon Noir: the title cards, pause screen, Unity menu, folder, scene and code namespace.
+- Story: the mystery now runs through the Graven. The Tidewarden recognizes it, the lens holds a second message addressed to it by name, and the tide gate's wave mark turns up inside its cockpit.
+
 ## v0.0.01
-- New game: Amnesia City, a Unity (URP) noir giant-robot game for PC.
+- New game (first released as "Amnesia City"), a Unity (URP) noir giant-robot game for PC.
 - Episode 1 "Low Tide" vertical slice. It includes a rainy city block, three characters, five clues, a notebook,
   and a one-chance deduction with three outcomes (Sharp, Shaken, Lost).
 - Robot fight against the Tidewarden.

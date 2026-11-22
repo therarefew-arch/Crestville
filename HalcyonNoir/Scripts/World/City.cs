@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace AmnesiaCity
+namespace HalcyonNoir
 {
     // Something the player can walk up to and press E on.
     public class Interactable : MonoBehaviour

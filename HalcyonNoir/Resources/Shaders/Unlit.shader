@@ -1,5 +1,5 @@
 // Flat color with fog. Used for water, sky shapes and backgrounds.
-Shader "AmnesiaCity/Unlit"
+Shader "HalcyonNoir/Unlit"
 {
     Properties
     {

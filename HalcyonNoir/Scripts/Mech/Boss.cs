@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace AmnesiaCity
+namespace HalcyonNoir
 {
     // The Tidewarden: a crab-like Relic with a lantern for a heart.
     // Every attack is telegraphed on the ground. Amber = guard or dodge. Red = dodge only.

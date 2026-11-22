@@ -1,5 +1,5 @@
 // Cel-shaded lighting with hard shadow bands, rim light, emission and an ink outline.
-Shader "AmnesiaCity/Toon"
+Shader "HalcyonNoir/Toon"
 {
     Properties
     {

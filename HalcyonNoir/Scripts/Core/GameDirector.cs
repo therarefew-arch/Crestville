@@ -3,11 +3,11 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-namespace AmnesiaCity
+namespace HalcyonNoir
 {
     public static class Game
     {
-        public const string Version = "v0.0.01";
+        public const string Version = "v0.0.02";
         public static bool Paused;
     }
 
@@ -29,7 +29,7 @@ namespace AmnesiaCity
         static void TryStart(Scene s)
         {
             if (Object.FindFirstObjectByType<GameDirector>() != null) return;
-            if (s.name != "AmnesiaCity" && Object.FindFirstObjectByType<BootMarker>() == null) return;
+            if (s.name != "HalcyonNoir" && Object.FindFirstObjectByType<BootMarker>() == null) return;
             new GameObject("Director").AddComponent<GameDirector>();
         }
     }
@@ -346,7 +346,7 @@ namespace AmnesiaCity
             Shot(city.PlayerSpawn + new Vector3(-6, 6, -5), city.PlayerSpawn + new Vector3(12, 3, 4));
             cam.transform.position = orbit.CinePos;
             StartCoroutine(Fade(0, 2.5f));
-            yield return Card("AMNESIA CITY", "Episode 1  —  Low Tide", 2.5f);
+            yield return Card("HALCYON NOIR", "Episode 1  —  Low Tide", 2.5f);
             EndShot();
             yield return Letterbox(0, 0.8f);
             phase = Phase.Explore;
@@ -599,6 +599,7 @@ namespace AmnesiaCity
             Fx.I?.Shake(1.2f, 2.5f);
             yield return Narrate("Something was standing up out there. Something the size of a building, with a lantern where its heart should be.");
             yield return Say("Vane", "Graven. Wake up.");
+            yield return Narrate("I've never asked why it answers to me. Some questions you don't ask when the answer is a hundred feet tall.");
 
             // summon
             float hold = 0;
@@ -666,6 +667,13 @@ namespace AmnesiaCity
                 if (t > 1.6f) orbit.CineLook = boss.transform.position + Vector3.up * 10;
                 yield return null;
             }
+            // it knows the Graven
+            Shot(graven.transform.position + new Vector3(-14, 14, -22), boss.CorePos);
+            yield return Wait(0.8f);
+            yield return Narrate("It stopped. Its lantern dimmed and brightened, slow, like it was trying to place a face.",
+                                 "For a moment it just looked at the Graven, the way a dog looks at someone who left a long time ago.",
+                                 "Then it remembered what it was for.");
+            Shot(City.Arena + new Vector3(-70, 10, -40), boss.transform.position + Vector3.up * 10);
             Sound.I?.Play("roar", 1f, 0.6f);
             Fx.I?.Shake(2f, 1.2f);
             yield return Card("THE TIDEWARDEN", "A Relic.  It has been guarding the tide gate for forty years.", 1.6f);
@@ -792,6 +800,12 @@ namespace AmnesiaCity
                 "Inside its core, where the light had been, I found a lens. Brass and glass. The kind that belongs at the top of a lighthouse.",
                 "When I touched it, it spoke.");
             yield return Say("Teodor", "Mara... it's still lit. There's another city under the water. I'm going to see it.");
+            Sound.I?.Play("rumble", 0.3f, 1.6f);
+            yield return Narrate("The lens crackled. Then another voice came out of it. Older. Flat as a ledger.");
+            yield return Say("Unknown voice", "...Warden to Graven. The gate is open. Come home.");
+            yield return Narrate("Nobody had ever said that name but me.",
+                                 "Later, back in the cockpit, I found it. The same wave mark, stamped into the brass above the controls.",
+                                 "It was worn smooth, like someone had touched it for luck. Many times. Not me.");
 
             // back on the street
             phase = Phase.Story;
@@ -815,11 +829,11 @@ namespace AmnesiaCity
             yield return Fade(1, 2f);
             string rank = outcome == 2 ? "Sharp" : outcome == 1 ? "Shaken" : "Lost";
             yield return Card("END OF EPISODE 1", $"Next:  The Lighthouse That Wasn't\n\n<size=24>Deduction: {rank}    Retries: {attempts}    {Game.Version}</size>", 4f);
-            ui.CardTitle = "AMNESIA CITY"; ui.CardSub = "Press any key to play again"; ui.CardAlpha = 1;
+            ui.CardTitle = "HALCYON NOIR"; ui.CardSub = "Press any key to play again"; ui.CardAlpha = 1;
             while (!In.AnyKey) yield return null;
             Game.Paused = false;
             Time.timeScale = 1;
-            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex >= 0 ? SceneManager.GetActiveScene().name : "AmnesiaCity");
+            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex >= 0 ? SceneManager.GetActiveScene().name : "HalcyonNoir");
         }
 
         void OnDestroy()

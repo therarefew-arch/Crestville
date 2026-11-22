@@ -1,5 +1,5 @@
 // Additive glow for lights, neon, telegraph warnings and particles. Uses vertex color.
-Shader "AmnesiaCity/Glow"
+Shader "HalcyonNoir/Glow"
 {
     Properties
     {

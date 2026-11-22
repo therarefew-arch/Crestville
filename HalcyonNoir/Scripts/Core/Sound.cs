@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace AmnesiaCity
+namespace HalcyonNoir
 {
     // Every sound in the slice is synthesized at startup: rain, a slow noir jazz loop,
     // the fight theme and the impacts. No audio files needed.

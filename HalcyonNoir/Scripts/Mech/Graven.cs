@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace AmnesiaCity
+namespace HalcyonNoir
 {
     // The Graven: Vane's giant machine. Slow and enormous; every action costs heat.
     public class GravenController : MonoBehaviour

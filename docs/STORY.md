@@ -1,4 +1,4 @@
-# Amnesia City — Story Bible (working title)
+# Halcyon Noir — Story Bible
 
 An original noir mecha story. Inspired by the mood of late-90s Toonami anime: rain, jazz,
 art deco towers, a city with no past, and giant machines. No names, designs or lines from
@@ -67,5 +67,11 @@ rises from the harbor as Vane finishes his deduction.
 voice: "Mara, it's still lit. There's another city under the water. I'm going to see it."
 Teo is alive, somewhere below. And the things that were forgotten are starting to
 remember.
+
+**The Graven thread (the real mystery):** the Tidewarden hesitates when it sees the Graven, as
+if it recognizes it. The lens carries a second recording: "Warden to Graven. The gate is open.
+Come home." Nobody but Vane has ever said that name. Inside the cockpit, the same wave mark from
+the tide gate is stamped above the controls, worn smooth by someone else's hand. The question
+the whole series turns on: who sat in the Graven before Vane, and where is home?
 
 **Next:** Episode 2 — The Lighthouse That Wasn't.

@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace AmnesiaCity
+namespace HalcyonNoir
 {
     // Creates and caches materials. If the custom toon shader isn't available (or fails to
     // compile on this machine), everything falls back to Unity's standard URP Lit shader.
@@ -20,10 +20,10 @@ namespace AmnesiaCity
 
         public static void Init()
         {
-            toon = Find("AmnesiaCity/Toon");
-            glow = Find("AmnesiaCity/Glow");
-            unlit = Find("AmnesiaCity/Unlit");
-            windows = Find("AmnesiaCity/Windows");
+            toon = Find("HalcyonNoir/Toon");
+            glow = Find("HalcyonNoir/Glow");
+            unlit = Find("HalcyonNoir/Unlit");
+            windows = Find("HalcyonNoir/Windows");
             lit = Find("Universal Render Pipeline/Lit") ?? Find("Standard");
             if (toon == null) ToonOn = false;
         }

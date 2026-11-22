@@ -1,7 +1,7 @@
 using System.Collections;
 using UnityEngine;
 
-namespace AmnesiaCity
+namespace HalcyonNoir
 {
     // Game feel: hit-stop, slow motion, camera shake, screen flashes and particle bursts.
     public class Fx : MonoBehaviour

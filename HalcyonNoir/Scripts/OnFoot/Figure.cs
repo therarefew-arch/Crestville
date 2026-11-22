@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace AmnesiaCity
+namespace HalcyonNoir
 {
     // A stylized person built from simple shapes, with a procedural walk and idle sway.
     public class Figure : MonoBehaviour

@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace AmnesiaCity
+namespace HalcyonNoir
 {
     // All on-screen text and HUD, drawn with Unity's immediate-mode GUI so the slice needs
     // no UI packages or prefabs. Laid out on a 1920x1080 canvas and scaled to the screen.
@@ -377,7 +377,7 @@ namespace AmnesiaCity
             if (CanRestartFight && Btn(new Rect(vw / 2 - 200, y, 400, 56), "Restart the fight")) OnRestartFight?.Invoke();
             y += 72;
             if (Btn(new Rect(vw / 2 - 200, y, 400, 56), "Quit")) OnQuit?.Invoke();
-            Text(new Rect(0, H - 60, vw, 40), $"<size=20>Amnesia City {Game.Version}</size>", sCenter, 0.6f);
+            Text(new Rect(0, H - 60, vw, 40), $"<size=20>Halcyon Noir {Game.Version}</size>", sCenter, 0.6f);
         }
 
         bool Btn(Rect r, string label)

@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace AmnesiaCity
+namespace HalcyonNoir
 {
     // Elias Vane on foot: walks relative to the camera, runs with Shift.
     public class PlayerMotor : MonoBehaviour

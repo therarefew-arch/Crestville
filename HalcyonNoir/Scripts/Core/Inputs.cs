@@ -3,7 +3,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 #endif
 
-namespace AmnesiaCity
+namespace HalcyonNoir
 {
     // One place for every control. Works with Unity's new Input System (default in Unity 6)
     // or the old Input Manager, and with a gamepad.

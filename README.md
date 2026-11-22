@@ -1,10 +1,10 @@
-# Amnesia City
+# Halcyon Noir
 
 An original noir giant-robot game for PC, made in Unity. A rain-soaked art deco city lost its memory
 forty years ago. You play Elias Vane, who finds lost things for a living, and who has a very large
 machine sleeping under the old foundry.
 
-**Current version: v0.0.01.** The version is shown on the pause screen.
+**Current version: v0.0.02.** The version is shown on the pause screen.
 
 This first build is a playable vertical slice of **Episode 1: Low Tide**. It plays in this order:
 
@@ -22,9 +22,9 @@ There are no asset store packages to import.
 
 1. Install **Unity Hub** from unity.com. In Hub, install **Unity 6 (6000.0 LTS)** or newer.
 2. In Hub, click **New project** and pick the **Universal 3D** template (it's also called "3D (URP)"). Create it.
-3. Copy the `AmnesiaCity` folder from this repository into the project's `Assets` folder. You should end up with `Assets/AmnesiaCity/...`.
+3. Copy the `HalcyonNoir` folder from this repository into the project's `Assets` folder. You should end up with `Assets/HalcyonNoir/...`.
 4. Go back to Unity and wait for it to finish importing.
-5. In the top menu, click **Amnesia City → Create & Open Slice Scene**.
+5. In the top menu, click **Halcyon Noir → Create & Open Slice Scene**.
 6. Press **Play**. For the best experience, set the Game view to Full HD (1920x1080) or maximize it.
 
 To build a standalone game, open **File → Build Profiles** (it's called **Build Settings** in older versions), choose Windows, and build.
@@ -60,16 +60,16 @@ and if heat reaches 100% the Graven locks up.
 
 - **Everything is pink or magenta.** Press **F9** to switch to Unity's standard URP shader. Also make sure the
   project uses the Universal Render Pipeline (the Universal 3D template does).
-- **The menu item doesn't appear.** Check the Console for compile errors, and confirm the folder is at `Assets/AmnesiaCity`.
+- **The menu item doesn't appear.** Check the Console for compile errors, and confirm the folder is at `Assets/HalcyonNoir`.
 - **Keys don't respond.** Go to Edit → Project Settings → Player → Active Input Handling. Both "Input System Package"
   and "Both" work.
-- **Play does nothing in another scene.** The game only starts in the scene named `AmnesiaCity`, or in any scene that
+- **Play does nothing in another scene.** The game only starts in the scene named `HalcyonNoir`, or in any scene that
   contains a `BootMarker` component.
 
 ## Project layout
 
 ```
-AmnesiaCity/
+HalcyonNoir/
   Editor/SetupMenu.cs           menu item that creates the scene
   Resources/Shaders/            toon (with outlines), glow, unlit and window shaders for URP
   Scripts/Core/                 game director and story flow, input, materials, sound synth, effects

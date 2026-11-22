@@ -4,17 +4,17 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-namespace AmnesiaCity.EditorTools
+namespace HalcyonNoir.EditorTools
 {
-    // Menu: Amnesia City > Create & Open Slice Scene
-    // Makes an empty scene called "AmnesiaCity", saves it, adds it to Build Settings and opens it.
+    // Menu: Halcyon Noir > Create & Open Slice Scene
+    // Makes an empty scene called "HalcyonNoir", saves it, adds it to Build Settings and opens it.
     // The game builds the whole world from code when you press Play.
     public static class SetupMenu
     {
         const string Folder = "Assets/Scenes";
-        const string Path = Folder + "/AmnesiaCity.unity";
+        const string Path = Folder + "/HalcyonNoir.unity";
 
-        [MenuItem("Amnesia City/Create & Open Slice Scene", priority = 0)]
+        [MenuItem("Halcyon Noir/Create & Open Slice Scene", priority = 0)]
         public static void CreateScene()
         {
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
@@ -38,10 +38,10 @@ namespace AmnesiaCity.EditorTools
             list.Insert(0, new EditorBuildSettingsScene(Path, true));
             EditorBuildSettings.scenes = list.ToArray();
 
-            Debug.Log("Amnesia City: scene ready. Press Play.");
+            Debug.Log("Halcyon Noir: scene ready. Press Play.");
         }
 
-        [MenuItem("Amnesia City/Play", priority = 1)]
+        [MenuItem("Halcyon Noir/Play", priority = 1)]
         public static void Play()
         {
             if (SceneManager.GetActiveScene().path != Path) CreateScene();

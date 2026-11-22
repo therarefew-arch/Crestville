@@ -1,5 +1,5 @@
 // Building facades: a tiled window pattern, some lit warm, some dark.
-Shader "AmnesiaCity/Windows"
+Shader "HalcyonNoir/Windows"
 {
     Properties
     {
